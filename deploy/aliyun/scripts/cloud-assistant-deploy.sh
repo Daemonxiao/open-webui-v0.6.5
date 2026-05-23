@@ -57,6 +57,30 @@ resolve_acr_credentials() {
   mask_value "$ACR_LOGIN_PASSWORD"
 }
 
+resolve_acr_pull_registry() {
+  if [ -n "${ACR_PULL_REGISTRY:-}" ]; then
+    return 0
+  fi
+
+  ACR_PULL_REGISTRY="$ACR_REGISTRY"
+
+  if [[ "$ACR_REGISTRY" =~ ^(crpi-[^.]+)\.(cn-[^.]+)\.personal\.cr\.aliyuncs\.com$ ]]; then
+    ACR_PULL_REGISTRY="${BASH_REMATCH[1]}-vpc.${BASH_REMATCH[2]}.personal.cr.aliyuncs.com"
+  elif [[ "$ACR_REGISTRY" =~ ^registry\.(cn-[^.]+)\.aliyuncs\.com$ ]]; then
+    ACR_PULL_REGISTRY="registry-vpc.${BASH_REMATCH[1]}.aliyuncs.com"
+  fi
+}
+
+resolve_open_webui_pull_image() {
+  resolve_acr_pull_registry
+
+  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ] && [[ "$OPEN_WEBUI_IMAGE" == "$ACR_REGISTRY/"* ]]; then
+    OPEN_WEBUI_PULL_IMAGE="${ACR_PULL_REGISTRY}/${OPEN_WEBUI_IMAGE#"$ACR_REGISTRY/"}"
+  else
+    OPEN_WEBUI_PULL_IMAGE="$OPEN_WEBUI_IMAGE"
+  fi
+}
+
 file_to_base64() {
   base64 < "$1" | tr -d '\n'
 }
@@ -157,9 +181,12 @@ main() {
   local run_response
   local invoke_id
 
+  required_env ACR_REGISTRY
+  resolve_open_webui_pull_image
+
   printf '%s' "$OPEN_WEBUI_ENV_HAI_B64" | base64 -d > "$env_hai"
   {
-    printf 'OPEN_WEBUI_IMAGE=%s\n' "$OPEN_WEBUI_IMAGE"
+    printf 'OPEN_WEBUI_IMAGE=%s\n' "$OPEN_WEBUI_PULL_IMAGE"
     printf 'OPEN_WEBUI_PORT=%s\n' "$app_port"
     printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
     printf 'PGVECTOR_DB_URL=%s\n' "$PGVECTOR_DB_URL"
@@ -174,13 +201,15 @@ mkdir -p /opt/open-webui /root/.docker
 chmod 700 /opt/open-webui /root/.docker
 SCRIPT
 
-  local local_docker_config="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-  if [ -s "$local_docker_config" ]; then
-    cp "$local_docker_config" "$docker_config"
+  resolve_acr_credentials
+  docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
+  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ]; then
+    jq -n \
+      --arg push_registry "$ACR_REGISTRY" \
+      --arg pull_registry "$ACR_PULL_REGISTRY" \
+      --arg auth "$docker_auth" \
+      '{auths: {($push_registry): {auth: $auth}, ($pull_registry): {auth: $auth}}}' > "$docker_config"
   else
-    required_env ACR_REGISTRY
-    resolve_acr_credentials
-    docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
     jq -n --arg registry "$ACR_REGISTRY" --arg auth "$docker_auth" \
       '{auths: {($registry): {auth: $auth}}}' > "$docker_config"
   fi
