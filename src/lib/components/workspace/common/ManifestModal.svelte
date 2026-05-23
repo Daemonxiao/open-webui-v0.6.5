@@ -50,11 +50,11 @@
 							)}
 						</div>
 
-						<div class="my-2">
-							{$i18n.t(
-								'Your entire contribution will go directly to the plugin developer; Open WebUI does not take any percentage. However, the chosen funding platform might have its own fees.'
-							)}
-						</div>
+							<div class="my-2">
+								{$i18n.t(
+									'Your entire contribution will go directly to the plugin developer. However, the chosen funding platform might have its own fees.'
+								)}
+							</div>
 
 						<hr class="dark:border-gray-800 my-3" />
 						<div class="my-2">

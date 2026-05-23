@@ -642,10 +642,10 @@
 				{/each}
 
 				{#if !(searchValue.trim() in $MODEL_DOWNLOAD_POOL) && searchValue && ollamaVersion && $user?.role === 'admin'}
-					<Tooltip
-						content={$i18n.t(`Pull "{{searchValue}}" from Ollama.com`, {
-							searchValue: searchValue
-						})}
+						<Tooltip
+							content={$i18n.t(`Pull "{{searchValue}}" model`, {
+								searchValue: searchValue
+							})}
 						placement="top-start"
 					>
 						<button
@@ -654,9 +654,9 @@
 								pullModelHandler();
 							}}
 						>
-							<div class=" truncate">
-								{$i18n.t(`Pull "{{searchValue}}" from Ollama.com`, { searchValue: searchValue })}
-							</div>
+								<div class=" truncate">
+									{$i18n.t(`Pull "{{searchValue}}" model`, { searchValue: searchValue })}
+								</div>
 						</button>
 					</Tooltip>
 				{/if}

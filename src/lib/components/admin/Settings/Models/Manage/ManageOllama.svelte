@@ -566,9 +566,9 @@
 			<div class="space-y-2">
 				<div>
 					<div class=" mb-2 text-sm font-medium flex items-center gap-1.5">
-						<div>
-							{$i18n.t('Pull a model from Ollama.com')}
-						</div>
+							<div>
+								{$i18n.t('Pull a model')}
+							</div>
 
 						<div>
 							<Tooltip content="Update All Models" placement="top">
@@ -660,16 +660,7 @@
 						</button>
 					</div>
 
-					<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
-						{$i18n.t('To access the available model names for downloading,')}
-						<a
-							class=" text-gray-500 dark:text-gray-300 font-medium underline"
-							href="https://ollama.com/library"
-							target="_blank">{$i18n.t('click here.')}</a
-						>
-					</div>
-
-					{#if updateModelId}
+						{#if updateModelId}
 						<div class="text-xs">
 							Updating "{updateModelId}" {updateProgress ? `(${updateProgress}%)` : ''}
 						</div>
@@ -825,7 +816,7 @@
 
 					{#if createModelDigest !== ''}
 						<div class="flex flex-col mt-1">
-							<div class="font-medium mb-1">{createModelTag}</div>
+							<div class="font-medium mb-1">{createModelName}</div>
 							<div class="">
 								<div class="flex flex-row justify-between space-x-4 pr-2">
 									<div class=" flex-1">
