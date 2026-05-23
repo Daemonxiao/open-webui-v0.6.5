@@ -4,6 +4,8 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/open-webui}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/data}"
 CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
+HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
+HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
 
 wait_for_file() {
   local path="$1"
@@ -114,12 +116,12 @@ deploy_open_webui() {
     -v "$DATA_DIR:/app/backend/data" \
     "$OPEN_WEBUI_IMAGE"
 
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
       docker ps --filter "name=${CONTAINER_NAME}"
       return 0
     fi
-    sleep 5
+    sleep "$HEALTH_CHECK_DELAY_SECONDS"
   done
 
   docker logs --tail=200 "$CONTAINER_NAME"

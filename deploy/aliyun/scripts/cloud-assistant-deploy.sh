@@ -190,6 +190,8 @@ main() {
     printf 'OPEN_WEBUI_PORT=%s\n' "$app_port"
     printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
     printf 'PGVECTOR_DB_URL=%s\n' "$PGVECTOR_DB_URL"
+    printf 'OFFLINE_MODE=%s\n' "${OFFLINE_MODE:-true}"
+    printf 'RAG_EMBEDDING_MODEL_AUTO_UPDATE=%s\n' "${RAG_EMBEDDING_MODEL_AUTO_UPDATE:-false}"
     printf 'REDIS_URL=%s\n' "${REDIS_URL:-}"
     printf 'WEBSOCKET_MANAGER=%s\n' "${WEBSOCKET_MANAGER:-}"
     printf 'WEBSOCKET_REDIS_URL=%s\n' "${WEBSOCKET_REDIS_URL:-${REDIS_URL:-}}"
