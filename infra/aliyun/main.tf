@@ -146,8 +146,8 @@ resource "alicloud_instance" "app" {
 }
 
 resource "alicloud_ecs_ram_role_attachment" "app" {
-  role_name    = alicloud_ram_role.ecs.role_name
-  instance_ids = [alicloud_instance.app.id]
+  ram_role_name = alicloud_ram_role.ecs.role_name
+  instance_id   = alicloud_instance.app.id
 }
 
 resource "alicloud_eip_address" "app" {
