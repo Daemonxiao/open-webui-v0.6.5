@@ -137,9 +137,9 @@ variable "rds_engine_version" {
 }
 
 variable "rds_instance_type" {
-  description = "ApsaraDB RDS PostgreSQL instance class."
+  description = "Optional ApsaraDB RDS PostgreSQL instance class. Leave empty to select an available class in the selected zone."
   type        = string
-  default     = "pg.n2.2c.2m"
+  default     = ""
 }
 
 variable "rds_instance_storage" {

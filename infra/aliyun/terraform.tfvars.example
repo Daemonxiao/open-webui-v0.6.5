@@ -12,7 +12,7 @@ zone_id = ""
 
 # RDS PostgreSQL is created by default for Open WebUI metadata persistence.
 rds_engine_version   = "13.0"
-rds_instance_type    = "pg.n2.2c.2m"
+rds_instance_type    = ""
 rds_instance_storage = 30
 
 # Redis is not required for the default single ECS deployment.
