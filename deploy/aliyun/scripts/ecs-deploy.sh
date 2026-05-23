@@ -103,7 +103,7 @@ deploy_open_webui() {
   . "$APP_DIR/.env"
   set +a
 
-  docker pull "$OPEN_WEBUI_IMAGE"
+  pull_image
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   docker run -d \
     --name "$CONTAINER_NAME" \
@@ -123,6 +123,22 @@ deploy_open_webui() {
   done
 
   docker logs --tail=200 "$CONTAINER_NAME"
+  return 1
+}
+
+pull_image() {
+  local attempt
+
+  for attempt in $(seq 1 5); do
+    if docker pull "$OPEN_WEBUI_IMAGE"; then
+      return 0
+    fi
+
+    echo "Image pull failed on attempt $attempt, retrying..." >&2
+    sleep $((attempt * 15))
+  done
+
+  echo "Image pull failed after 5 attempts." >&2
   return 1
 }
 
