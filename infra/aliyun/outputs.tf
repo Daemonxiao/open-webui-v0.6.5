@@ -43,6 +43,11 @@ output "rds_instance_id" {
   value       = alicloud_db_instance.postgres.id
 }
 
+output "rds_instance_type" {
+  description = "Resolved ApsaraDB RDS PostgreSQL instance class."
+  value       = local.selected_rds_type
+}
+
 output "database_url" {
   description = "PostgreSQL DATABASE_URL for Open WebUI."
   value       = "postgresql://${alicloud_db_account.app.account_name}:${random_password.rds.result}@${alicloud_db_instance.postgres.connection_string}:${alicloud_db_instance.postgres.port}/${var.rds_database_name}"
