@@ -203,6 +203,10 @@ resource "random_password" "rds" {
   override_special = "_"
 }
 
+resource "alicloud_rds_service_linked_role" "postgres" {
+  service_name = "AliyunServiceRoleForRdsPgsqlOnEcs"
+}
+
 resource "alicloud_db_instance" "postgres" {
   engine                   = "PostgreSQL"
   engine_version           = var.rds_engine_version
@@ -216,6 +220,8 @@ resource "alicloud_db_instance" "postgres" {
   security_ips             = [var.vswitch_cidr_block]
 
   tags = local.tags
+
+  depends_on = [alicloud_rds_service_linked_role.postgres]
 }
 
 resource "alicloud_db_database" "app" {
