@@ -66,7 +66,7 @@ Environment variables:
 - `ACR_INSTANCE_ID=<enterprise-instance-id>` only for ACR Enterprise Edition
 - `APP_PORT=3000`
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
-- `TF_LOCK_INSTANCE=open-webui-hai-tf-lock`
+- `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
 
 ## Provisioning Order
@@ -114,7 +114,7 @@ terraform -chdir=infra/aliyun init \
   -backend-config="bucket=<globally-unique-oss-bucket-name>" \
   -backend-config="key=open-webui/hai/terraform.tfstate" \
   -backend-config="region=cn-beijing" \
-  -backend-config="tablestore_endpoint=https://open-webui-hai-tf-lock.cn-beijing.ots.aliyuncs.com" \
+  -backend-config="tablestore_endpoint=https://ow-hai-tf-lock.cn-beijing.ots.aliyuncs.com" \
   -backend-config="tablestore_table=terraform_locks"
 
 terraform -chdir=infra/aliyun plan
