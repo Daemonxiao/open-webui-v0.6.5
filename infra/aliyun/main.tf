@@ -34,9 +34,20 @@ data "alicloud_images" "aliyun_linux" {
   most_recent = true
 }
 
+data "alicloud_db_instance_classes" "postgres" {
+  count                    = var.rds_instance_type == "" ? 1 : 0
+  zone_id                  = local.selected_zone_id
+  engine                   = "PostgreSQL"
+  engine_version           = var.rds_engine_version
+  category                 = var.rds_category
+  db_instance_storage_type = var.rds_storage_type
+  instance_charge_type     = "PostPaid"
+}
+
 locals {
   selected_instance_type = var.instance_type != "" ? var.instance_type : data.alicloud_instance_types.selected[0].instance_types[0].id
   selected_image_id      = var.image_id != "" ? var.image_id : data.alicloud_images.aliyun_linux[0].images[0].id
+  selected_rds_type      = var.rds_instance_type != "" ? var.rds_instance_type : data.alicloud_db_instance_classes.postgres[0].instance_classes[0].instance_class
 }
 
 resource "alicloud_vpc" "app" {
@@ -210,7 +221,7 @@ resource "alicloud_rds_service_linked_role" "postgres" {
 resource "alicloud_db_instance" "postgres" {
   engine                   = "PostgreSQL"
   engine_version           = var.rds_engine_version
-  instance_type            = var.rds_instance_type
+  instance_type            = local.selected_rds_type
   instance_storage         = var.rds_instance_storage
   db_instance_storage_type = var.rds_storage_type
   instance_name            = "${local.name_prefix}-pg"
