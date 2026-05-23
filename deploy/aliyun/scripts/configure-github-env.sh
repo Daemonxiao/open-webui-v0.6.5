@@ -52,6 +52,27 @@ prompt_value() {
   printf '%s' "${value:-$default_value}"
 }
 
+prompt_yes_no() {
+  local name="$1"
+  local default_value="${2:-n}"
+  local value="${!name:-}"
+
+  if [ -z "$value" ]; then
+    printf 'Configure ACR_USERNAME and ACR_PASSWORD now? [y/N]: ' >&2
+    IFS= read -r value
+  fi
+
+  value="${value:-$default_value}"
+  case "$value" in
+    y|Y|yes|YES|true|TRUE|1)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 set_var() {
   local name="$1"
   local value="$2"
@@ -99,7 +120,7 @@ main() {
   set_secret ALIYUN_ACCESS_KEY_ID "$(prompt_secret ALIYUN_ACCESS_KEY_ID)"
   set_secret ALIYUN_ACCESS_KEY_SECRET "$(prompt_secret ALIYUN_ACCESS_KEY_SECRET)"
 
-  if [ -n "${ACR_USERNAME:-}" ] || [ -n "${ACR_PASSWORD:-}" ]; then
+  if [ -n "${ACR_USERNAME:-}" ] || [ -n "${ACR_PASSWORD:-}" ] || prompt_yes_no CONFIGURE_ACR_CREDENTIALS n; then
     set_secret ACR_USERNAME "$(prompt_secret ACR_USERNAME)"
     set_secret ACR_PASSWORD "$(prompt_secret ACR_PASSWORD)"
   else
