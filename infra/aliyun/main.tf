@@ -11,12 +11,22 @@ locals {
 }
 
 data "alicloud_zones" "available" {
+  count                       = var.zone_id == "" ? 0 : 1
   available_disk_category     = var.system_disk_category
   available_resource_creation = "VSwitch"
 }
 
+data "alicloud_db_zones" "postgres" {
+  count                    = var.zone_id == "" ? 1 : 0
+  engine                   = "PostgreSQL"
+  engine_version           = var.rds_engine_version
+  category                 = var.rds_category
+  db_instance_storage_type = var.rds_storage_type
+  instance_charge_type     = "PostPaid"
+}
+
 locals {
-  selected_zone_id = var.zone_id != "" ? var.zone_id : data.alicloud_zones.available.zones[0].id
+  selected_zone_id = var.zone_id != "" ? var.zone_id : data.alicloud_db_zones.postgres[0].zones[0].id
 }
 
 data "alicloud_instance_types" "selected" {
