@@ -36,7 +36,7 @@ Optional environment secrets:
 - `ACR_USERNAME`
 - `ACR_PASSWORD`
 
-By default, workflows use `aliyun/acr-login@v1` with the Alibaba Cloud AccessKey to log in to ACR. Set `ACR_USERNAME` and `ACR_PASSWORD` only if ACR Personal Edition rejects AccessKey-based login for your instance.
+By default, workflows use `aliyun/acr-login@v1` with the Alibaba Cloud AccessKey to log in to ACR. If ACR returns `denied: requested access to the resource is denied` while pushing the image, either grant that RAM user push permission to the repository or set `ACR_USERNAME` and `ACR_PASSWORD` from the ACR Access Credential page. When both ACR secrets are present, the build and deploy workflows use them before trying AccessKey-based ACR login.
 
 Generate `OPEN_WEBUI_ENV_HAI_B64` locally without printing the secret values:
 
@@ -48,6 +48,13 @@ Or run the helper script. It uses hidden prompts for secret values and reads `.e
 
 ```sh
 deploy/aliyun/scripts/configure-github-env.sh
+```
+
+To update only ACR credentials after the environment already exists, run:
+
+```sh
+gh secret set ACR_USERNAME --env aliyun-hai
+gh secret set ACR_PASSWORD --env aliyun-hai
 ```
 
 Environment variables:
