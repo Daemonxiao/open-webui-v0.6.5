@@ -1,0 +1,104 @@
+name: Alibaba Cloud Infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Terraform stack to run
+        type: choice
+        required: true
+        default: aliyun
+        options:
+          - bootstrap
+          - aliyun
+      apply:
+        description: Apply the generated Terraform plan
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.stack }}
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    env:
+      ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      APP_PORT: ${{ vars.APP_PORT || '3000' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'open-webui-hai-tf-lock' }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALICLOUD_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required settings
+        run: |
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          test -n "$TF_STATE_BUCKET"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra
+
+      - name: Bootstrap init
+        if: inputs.stack == 'bootstrap'
+        run: terraform -chdir=infra/bootstrap init
+
+      - name: Bootstrap validate
+        if: inputs.stack == 'bootstrap'
+        run: terraform -chdir=infra/bootstrap validate
+
+      - name: Bootstrap plan
+        if: inputs.stack == 'bootstrap'
+        run: |
+          terraform -chdir=infra/bootstrap plan \
+            -var "region=$ALIYUN_REGION" \
+            -var "state_bucket_name=$TF_STATE_BUCKET" \
+            -var "lock_instance_name=$TF_LOCK_INSTANCE" \
+            -var "lock_table_name=$TF_LOCK_TABLE" \
+            -out=tfplan
+
+      - name: Bootstrap apply
+        if: inputs.stack == 'bootstrap' && inputs.apply
+        run: terraform -chdir=infra/bootstrap apply -auto-approve tfplan
+
+      - name: App infra init
+        if: inputs.stack == 'aliyun'
+        run: |
+          terraform -chdir=infra/aliyun init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=open-webui/hai/terraform.tfstate" \
+            -backend-config="region=$ALIYUN_REGION" \
+            -backend-config="tablestore_endpoint=https://${TF_LOCK_INSTANCE}.${ALIYUN_REGION}.ots.aliyuncs.com" \
+            -backend-config="tablestore_table=$TF_LOCK_TABLE"
+
+      - name: App infra validate
+        if: inputs.stack == 'aliyun'
+        run: terraform -chdir=infra/aliyun validate
+
+      - name: App infra plan
+        if: inputs.stack == 'aliyun'
+        run: |
+          terraform -chdir=infra/aliyun plan \
+            -var "region=$ALIYUN_REGION" \
+            -var "app_port=$APP_PORT" \
+            -out=tfplan
+
+      - name: App infra apply
+        if: inputs.stack == 'aliyun' && inputs.apply
+        run: terraform -chdir=infra/aliyun apply -auto-approve tfplan

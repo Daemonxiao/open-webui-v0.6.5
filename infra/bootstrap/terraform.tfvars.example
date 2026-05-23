@@ -1,0 +1,4 @@
+region             = "cn-beijing"
+state_bucket_name  = "replace-with-globally-unique-oss-bucket"
+lock_instance_name = "open-webui-hai-tf-lock"
+lock_table_name    = "terraform_locks"
