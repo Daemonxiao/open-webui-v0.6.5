@@ -7,7 +7,7 @@ ACR_REGISTRY="${ACR_REGISTRY:-registry.cn-beijing.aliyuncs.com}"
 ACR_REPOSITORY="${ACR_REPOSITORY:-open-webui}"
 ACR_INSTANCE_ID="${ACR_INSTANCE_ID:-}"
 APP_PORT="${APP_PORT:-3000}"
-TF_LOCK_INSTANCE="${TF_LOCK_INSTANCE:-open-webui-hai-tf-lock}"
+TF_LOCK_INSTANCE="${TF_LOCK_INSTANCE:-ow-hai-tf-lock}"
 TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform_locks}"
 
 required_command() {

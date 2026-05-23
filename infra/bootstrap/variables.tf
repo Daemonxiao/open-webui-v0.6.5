@@ -12,7 +12,12 @@ variable "state_bucket_name" {
 variable "lock_instance_name" {
   description = "TableStore instance name used by the Terraform OSS backend for state locking."
   type        = string
-  default     = "open-webui-hai-tf-lock"
+  default     = "ow-hai-tf-lock"
+
+  validation {
+    condition     = can(regex("^[A-Za-z][A-Za-z0-9-]{1,14}[A-Za-z0-9]$", var.lock_instance_name))
+    error_message = "The lock instance name must be 3-16 characters, start with a letter, end with a letter or digit, and contain only letters, digits, or hyphens."
+  }
 }
 
 variable "lock_table_name" {
