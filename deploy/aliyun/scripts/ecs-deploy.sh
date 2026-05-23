@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/open-webui}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/data}"
+CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
 
 wait_for_file() {
   local path="$1"
@@ -19,36 +20,38 @@ wait_for_file() {
   return 1
 }
 
-install_docker() {
+install_container_runtime() {
   if command -v docker >/dev/null 2>&1; then
-    systemctl enable --now docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1 || true
+    start_container_service || true
   else
     if command -v dnf >/dev/null 2>&1; then
       dnf install -y docker curl util-linux e2fsprogs
-      dnf install -y docker-compose-plugin || true
     elif command -v yum >/dev/null 2>&1; then
       yum install -y docker curl util-linux e2fsprogs
-      yum install -y docker-compose-plugin || true
     elif command -v apt-get >/dev/null 2>&1; then
       apt-get update
       DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io curl util-linux e2fsprogs
-      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin || true
     else
       echo "No supported package manager found for Docker installation." >&2
       return 1
     fi
-    systemctl enable --now docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1
+    start_container_service || true
   fi
 
-  if docker compose version >/dev/null 2>&1; then
-    return 0
+  docker version >/dev/null
+}
+
+start_container_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now docker >/dev/null 2>&1 && return 0
+    systemctl enable --now podman.socket >/dev/null 2>&1 && return 0
   fi
 
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-  docker compose version >/dev/null
+  if command -v service >/dev/null 2>&1; then
+    service docker start >/dev/null 2>&1 && return 0
+  fi
+
+  return 1
 }
 
 find_data_device() {
@@ -100,18 +103,26 @@ deploy_open_webui() {
   . "$APP_DIR/.env"
   set +a
 
-  docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" pull
-  docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" up -d --remove-orphans
+  docker pull "$OPEN_WEBUI_IMAGE"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    --restart unless-stopped \
+    -p "${OPEN_WEBUI_PORT:-3000}:8080" \
+    --env-file "$APP_DIR/.env.hai" \
+    --env-file "$APP_DIR/.env" \
+    -v "$DATA_DIR:/app/backend/data" \
+    "$OPEN_WEBUI_IMAGE"
 
   for _ in $(seq 1 60); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
-      docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" ps
+      docker ps --filter "name=${CONTAINER_NAME}"
       return 0
     fi
     sleep 5
   done
 
-  docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/docker-compose.yml" logs --tail=200 open-webui
+  docker logs --tail=200 "$CONTAINER_NAME"
   return 1
 }
 
@@ -125,7 +136,7 @@ main() {
   wait_for_file "/root/.docker/config.json"
 
   chmod 600 "$APP_DIR/.env" "$APP_DIR/.env.hai" /root/.docker/config.json
-  install_docker
+  install_container_runtime
   mount_data_disk
   deploy_open_webui
 }
