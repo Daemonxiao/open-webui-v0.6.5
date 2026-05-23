@@ -63,6 +63,30 @@ jobs:
         if: inputs.stack == 'bootstrap'
         run: terraform -chdir=infra/bootstrap validate
 
+      - name: Bootstrap import existing resources
+        if: inputs.stack == 'bootstrap' && inputs.apply
+        run: |
+          import_resource() {
+            local address="$1"
+            local id="$2"
+
+            if terraform -chdir=infra/bootstrap import -input=false \
+              -var "region=$ALIYUN_REGION" \
+              -var "state_bucket_name=$TF_STATE_BUCKET" \
+              -var "lock_instance_name=$TF_LOCK_INSTANCE" \
+              -var "lock_table_name=$TF_LOCK_TABLE" \
+              "$address" "$id"; then
+              echo "Imported $address"
+            else
+              echo "Skipped importing $address; it may not exist yet."
+            fi
+          }
+
+          import_resource alicloud_oss_bucket.terraform_state "$TF_STATE_BUCKET"
+          import_resource alicloud_oss_bucket_acl.terraform_state "$TF_STATE_BUCKET"
+          import_resource alicloud_ots_instance.terraform_lock "$TF_LOCK_INSTANCE"
+          import_resource alicloud_ots_table.terraform_lock "${TF_LOCK_INSTANCE}:${TF_LOCK_TABLE}"
+
       - name: Bootstrap plan
         if: inputs.stack == 'bootstrap'
         run: |
