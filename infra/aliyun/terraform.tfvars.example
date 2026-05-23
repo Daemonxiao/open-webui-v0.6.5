@@ -1,0 +1,21 @@
+region                  = "cn-beijing"
+project_name            = "open-webui"
+environment             = "hai"
+app_port                = 3000
+app_ingress_cidr_blocks = ["0.0.0.0/0"]
+
+# Leave empty to auto-select a 2C4G type in the selected zone.
+instance_type = ""
+
+# Optional: set this if you want a specific zone, for example "cn-beijing-k".
+zone_id = ""
+
+# RDS PostgreSQL is created by default for Open WebUI metadata persistence.
+rds_engine_version   = "13.0"
+rds_instance_type    = "pg.n2.2c.2m"
+rds_instance_storage = 30
+
+# Redis is not required for the default single ECS deployment.
+# Set both values only if you later deploy multiple Open WebUI instances.
+redis_url         = ""
+websocket_manager = ""

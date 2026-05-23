@@ -1,0 +1,199 @@
+name: Alibaba Cloud Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+  ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+  APP_PORT: ${{ vars.APP_PORT || '3000' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'open-webui-hai-tf-lock' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    env:
+      ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+      ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+      APP_PORT: ${{ vars.APP_PORT || '3000' }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALICLOUD_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate image settings
+        run: |
+          test -n "$ACR_NAMESPACE"
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+
+      - name: Set image
+        id: image
+        run: |
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:git-${GITHUB_SHA}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "OPEN_WEBUI_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Alibaba Cloud ACR
+        if: env.ACR_INSTANCE_ID == ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Login to Alibaba Cloud ACR Enterprise
+        if: env.ACR_INSTANCE_ID != ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          instance-id: ${{ env.ACR_INSTANCE_ID }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.image.outputs.image }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:latest
+          build-args: |
+            BUILD_HASH=${{ github.sha }}
+
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    needs: build
+    env:
+      ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+      ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+      APP_PORT: ${{ vars.APP_PORT || '3000' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'open-webui-hai-tf-lock' }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALICLOUD_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      OPEN_WEBUI_ENV_HAI_B64: ${{ secrets.OPEN_WEBUI_ENV_HAI_B64 }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      OPEN_WEBUI_IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deploy settings
+        run: |
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          test -n "$TF_STATE_BUCKET"
+          test -n "$ACR_NAMESPACE"
+          test -n "$OPEN_WEBUI_ENV_HAI_B64"
+          test -n "$OPEN_WEBUI_IMAGE"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install Alibaba Cloud CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -fsSL https://aliyuncli.alicdn.com/install.sh | sudo bash
+          aliyun configure set \
+            --mode AK \
+            --region "$ALIYUN_REGION" \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+          aliyun version
+
+      - name: Login to Alibaba Cloud ACR
+        if: env.ACR_INSTANCE_ID == ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Login to Alibaba Cloud ACR Enterprise
+        if: env.ACR_INSTANCE_ID != ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          instance-id: ${{ env.ACR_INSTANCE_ID }}
+
+      - name: Read Terraform outputs
+        run: |
+          terraform -chdir=infra/aliyun init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=open-webui/hai/terraform.tfstate" \
+            -backend-config="region=$ALIYUN_REGION" \
+            -backend-config="tablestore_endpoint=https://${TF_LOCK_INSTANCE}.${ALIYUN_REGION}.ots.aliyuncs.com" \
+            -backend-config="tablestore_table=$TF_LOCK_TABLE"
+          echo "ECS_INSTANCE_ID=$(terraform -chdir=infra/aliyun output -raw instance_id)" >> "$GITHUB_ENV"
+          echo "HEALTH_URL=$(terraform -chdir=infra/aliyun output -raw health_url)" >> "$GITHUB_ENV"
+          database_url="$(terraform -chdir=infra/aliyun output -raw database_url)"
+          redis_url="$(terraform -chdir=infra/aliyun output -raw redis_url)"
+          websocket_manager="$(terraform -chdir=infra/aliyun output -raw websocket_manager)"
+          echo "::add-mask::$database_url"
+          if [ -n "$redis_url" ]; then
+            echo "::add-mask::$redis_url"
+          fi
+          {
+            echo "DATABASE_URL=$database_url"
+            echo "PGVECTOR_DB_URL=$database_url"
+            echo "REDIS_URL=$redis_url"
+            echo "WEBSOCKET_MANAGER=$websocket_manager"
+            echo "WEBSOCKET_REDIS_URL=$redis_url"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy through ECS Cloud Assistant
+        run: bash deploy/aliyun/scripts/cloud-assistant-deploy.sh
+
+      - name: Verify public health endpoint
+        run: curl --retry 30 --retry-all-errors --retry-delay 5 --fail "$HEALTH_URL"
