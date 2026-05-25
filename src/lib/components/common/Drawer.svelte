@@ -5,6 +5,7 @@
 
 	export let show = false;
 	export let className = '';
+	export let side: 'bottom' | 'right' = 'bottom';
 	export let onClose = () => {};
 
 	let modalElement = null;
@@ -57,14 +58,20 @@
 {#if show}
 	<div
 		bind:this={modalElement}
-		class="modal fixed right-0 bottom-0 left-0 z-999 flex h-screen max-h-[100dvh] w-full justify-center overflow-hidden overscroll-contain bg-black/60"
-		in:fly={{ y: 100, duration: 100 }}
+		class="modal fixed right-0 bottom-0 left-0 top-0 z-999 flex h-screen max-h-[100dvh] w-full overflow-hidden overscroll-contain bg-black/60 {side ===
+		'right'
+			? 'justify-end'
+			: 'justify-center'}"
+		in:fade={{ duration: 100 }}
 		on:mousedown={() => {
 			show = false;
 		}}
 	>
 		<div
-			class=" mt-auto w-full bg-gray-50 dark:bg-gray-900 dark:text-gray-100 {className} scrollbar-hidden max-h-[100dvh] overflow-y-auto"
+			class="{side === 'right'
+				? 'ml-auto h-full max-h-[100dvh]'
+				: 'mt-auto w-full max-h-[100dvh]'} bg-gray-50 dark:bg-gray-900 dark:text-gray-100 {className} scrollbar-hidden overflow-y-auto"
+			in:fly={side === 'right' ? { x: 100, duration: 150 } : { y: 100, duration: 100 }}
 			on:mousedown={(e) => {
 				e.stopPropagation();
 			}}

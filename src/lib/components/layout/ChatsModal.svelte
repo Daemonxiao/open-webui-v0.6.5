@@ -13,6 +13,7 @@
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	import Modal from '$lib/components/common/Modal.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 
@@ -30,6 +31,7 @@
 	export let show = false;
 
 	export let title = 'Chats';
+	export let variant: 'modal' | 'drawer' = 'modal';
 	export let emptyPlaceholder = '';
 	export let shareUrl = false;
 	export let showUserInfo = false;
@@ -87,8 +89,18 @@
 	}}
 />
 
-<Modal size="lg" bind:show>
-	<div>
+<svelte:component
+	this={variant === 'drawer' ? Drawer : Modal}
+	bind:show
+	{...(variant === 'drawer'
+		? {
+				side: 'right',
+				className:
+					'w-full sm:w-[34rem] lg:w-[42rem] !bg-white dark:!bg-gray-900 shadow-3xl border-l border-gray-100 dark:border-gray-850'
+			}
+		: { size: 'lg' })}
+>
+	<div class={variant === 'drawer' ? 'h-full min-h-0 flex flex-col' : ''}>
 		<div class=" flex justify-between dark:text-gray-300 px-5 pt-4 pb-1">
 			<div class=" text-lg font-medium self-center">{title}</div>
 			<button
@@ -112,7 +124,11 @@
 			</button>
 		</div>
 
-		<div class="flex flex-col w-full px-5 pb-4 dark:text-gray-200">
+		<div
+			class="flex flex-col w-full px-5 pb-4 dark:text-gray-200 {variant === 'drawer'
+				? 'flex-1 min-h-0'
+				: ''}"
+		>
 			{#if showSearch}
 				<div class=" flex w-full space-x-2 mt-0.5 mb-1.5">
 					<div class="flex flex-1">
@@ -154,9 +170,13 @@
 				</div>
 			{/if}
 
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
+			<div
+				class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6 {variant === 'drawer'
+					? 'flex-1 min-h-0'
+					: ''}"
+			>
 				{#if chatList}
-					<div class="w-full">
+					<div class="w-full {variant === 'drawer' ? 'h-full min-h-0 flex flex-col' : ''}">
 						{#if chatList.length > 0}
 							<div class="flex text-xs font-medium mb-1.5">
 								{#if showUserInfo}
@@ -214,7 +234,11 @@
 								</button>
 							</div>
 						{/if}
-						<div class="text-left text-sm w-full mb-3 max-h-[22rem] overflow-y-scroll">
+						<div
+							class="text-left text-sm w-full mb-3 {variant === 'drawer'
+								? 'flex-1 min-h-0 overflow-y-auto'
+								: 'max-h-[22rem] overflow-y-scroll'}"
+						>
 							{#if chatList.length === 0}
 								<div
 									class="text-xs text-gray-500 dark:text-gray-400 text-center px-5 min-h-20 w-full h-full flex justify-center items-center"
@@ -525,4 +549,4 @@
 			</div>
 		</div>
 	</div>
-</Modal>
+</svelte:component>

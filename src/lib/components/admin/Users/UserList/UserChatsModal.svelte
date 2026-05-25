@@ -109,6 +109,7 @@
 	bind:query
 	bind:orderBy
 	bind:direction
+	variant="drawer"
 	title={$i18n.t("{{user}}'s Chats", {
 		user: user.name.length > 32 ? `${user.name.slice(0, 32)}...` : user.name
 	})}
