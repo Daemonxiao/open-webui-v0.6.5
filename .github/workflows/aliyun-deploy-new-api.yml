@@ -1,4 +1,4 @@
-name: Alibaba Cloud Deploy New API
+name: Deploy Gateway (New API) to Alibaba Cloud
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ env:
 
 jobs:
   deploy-new-api:
-    name: Deploy New API to ECS
+    name: Deploy Gateway (New API)
     runs-on: ubuntu-latest
     environment: aliyun-hai
     env:
@@ -80,11 +80,11 @@ jobs:
           echo "::add-mask::$new_api_database_url"
           echo "NEW_API_DATABASE_URL=$new_api_database_url" >> "$GITHUB_ENV"
 
-      - name: Deploy New API through ECS Cloud Assistant
+      - name: Deploy Gateway through ECS Cloud Assistant
         run: bash deploy/aliyun/scripts/cloud-assistant-deploy-new-api.sh
 
-      - name: Verify New API status endpoint
+      - name: Verify Gateway status endpoint
         run: curl --retry 30 --retry-all-errors --retry-delay 5 --fail "$NEW_API_STATUS_URL"
 
-      - name: Print New API URL
-        run: echo "New API is available at $NEW_API_URL"
+      - name: Print Gateway URL
+        run: echo "Gateway (New API) is available at $NEW_API_URL"

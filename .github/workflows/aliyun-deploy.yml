@@ -1,4 +1,4 @@
-name: Alibaba Cloud Deploy
+name: Deploy Open WebUI to Alibaba Cloud
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ env:
 
 jobs:
   build:
-    name: Build and push image
+    name: Build Open WebUI image
     runs-on: ubuntu-latest
     environment: aliyun-hai
     env:
@@ -103,7 +103,7 @@ jobs:
             BUILD_HASH=${{ github.sha }}
 
   deploy:
-    name: Deploy to ECS
+    name: Deploy Open WebUI
     runs-on: ubuntu-latest
     environment: aliyun-hai
     needs: build

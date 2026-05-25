@@ -79,10 +79,10 @@ Environment variables:
 1. Run the `Alibaba Cloud Infra` workflow with `stack=bootstrap` and `apply=true`.
 2. Run the `Alibaba Cloud Infra` workflow with `stack=aliyun` and `apply=false`; inspect the plan.
 3. Run the same workflow with `stack=aliyun` and `apply=true`.
-4. Run `Alibaba Cloud Deploy New API`.
+4. Run `Deploy Gateway (New API) to Alibaba Cloud`.
 5. Open the New API web UI, configure upstream channels, and create a token for Open WebUI.
 6. Save that token as the `NEW_API_OPENWEBUI_TOKEN` environment secret.
-7. Run `Alibaba Cloud Deploy`, or push to `main`.
+7. Run `Deploy Open WebUI to Alibaba Cloud`, or push to `main`.
 
 The Open WebUI deploy workflow builds and pushes:
 
@@ -114,7 +114,7 @@ The New API web UI is intentionally deployed first, because the Open WebUI token
 gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai
 ```
 
-Then rerun `Alibaba Cloud Deploy`.
+Then rerun `Deploy Open WebUI to Alibaba Cloud`.
 
 ## Database And Redis
 
