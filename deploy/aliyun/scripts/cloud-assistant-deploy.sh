@@ -126,12 +126,13 @@ decode_maybe_base64() {
 
 wait_for_command() {
   local invoke_id="$1"
+  local attempts="${2:-240}"
   local result
   local status
   local exit_code
   local output
 
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "$attempts"); do
     result="$(aliyun ecs DescribeInvocationResults \
       --RegionId "$ALIYUN_REGION" \
       --InvokeId "$invoke_id")"
@@ -160,7 +161,7 @@ wait_for_command() {
     esac
   done
 
-  echo "Timed out waiting for Cloud Assistant invocation $invoke_id." >&2
+  echo "Timed out waiting for Cloud Assistant invocation $invoke_id after $((attempts * 10)) seconds." >&2
   return 1
 }
 
@@ -241,7 +242,7 @@ SCRIPT
     echo "RunCommand did not return InvokeId for prepare step: $run_response" >&2
     return 1
   fi
-  wait_for_command "$invoke_id"
+  wait_for_command "$invoke_id" 60
 
   send_file "$REPO_ROOT/deploy/aliyun/docker-compose.open-webui.yml" "docker-compose.open-webui.yml" "/opt/open-webui" "0600"
   send_file "$compose_env" ".env" "/opt/open-webui" "0600"
@@ -265,7 +266,7 @@ SCRIPT
     return 1
   fi
 
-  wait_for_command "$invoke_id"
+  wait_for_command "$invoke_id" 240
 }
 
 main "$@"

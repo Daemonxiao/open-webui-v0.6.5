@@ -54,12 +54,12 @@ install_docker_compose() {
   fi
 
   if command -v dnf >/dev/null 2>&1; then
-    dnf install -y docker-compose-plugin || true
+    timeout 300 dnf install -y docker-compose-plugin || true
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y docker-compose-plugin || true
+    timeout 300 yum install -y docker-compose-plugin || true
   elif command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin || true
+    DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y docker-compose-plugin || true
   fi
 
   if docker compose version >/dev/null 2>&1; then
@@ -67,7 +67,7 @@ install_docker_compose() {
   fi
 
   mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
+  timeout 180 curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
     -o /usr/local/lib/docker/cli-plugins/docker-compose
   chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
   docker compose version >/dev/null
