@@ -1,0 +1,24 @@
+services:
+  open-webui:
+    image: ${OPEN_WEBUI_IMAGE:?OPEN_WEBUI_IMAGE is required}
+    container_name: open-webui-hai
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+    env_file:
+      - .env.hai
+      - .env.open-webui
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      PGVECTOR_DB_URL: ${PGVECTOR_DB_URL:?PGVECTOR_DB_URL is required}
+      REDIS_URL: ${REDIS_URL:-}
+      WEBSOCKET_MANAGER: ${WEBSOCKET_MANAGER:-}
+      WEBSOCKET_REDIS_URL: ${WEBSOCKET_REDIS_URL:-}
+    volumes:
+      - /opt/open-webui/data:/app/backend/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail http://localhost:8080/health | jq -ne 'input.status == true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

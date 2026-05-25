@@ -124,6 +124,7 @@ jobs:
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
       OPEN_WEBUI_ENV_HAI_B64: ${{ secrets.OPEN_WEBUI_ENV_HAI_B64 }}
+      NEW_API_OPENWEBUI_TOKEN: ${{ secrets.NEW_API_OPENWEBUI_TOKEN }}
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       OPEN_WEBUI_IMAGE: ${{ needs.build.outputs.image }}
@@ -138,6 +139,7 @@ jobs:
           test -n "$TF_STATE_BUCKET"
           test -n "$ACR_NAMESPACE"
           test -n "$OPEN_WEBUI_ENV_HAI_B64"
+          test -n "$NEW_API_OPENWEBUI_TOKEN"
           test -n "$OPEN_WEBUI_IMAGE"
           if [ -n "$ACR_USERNAME" ] || [ -n "$ACR_PASSWORD" ]; then
             test -n "$ACR_USERNAME"

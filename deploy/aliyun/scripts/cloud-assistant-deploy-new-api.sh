@@ -24,63 +24,6 @@ mask_value() {
   fi
 }
 
-resolve_acr_credentials() {
-  if [ -n "${ACR_USERNAME:-}" ] && [ -n "${ACR_PASSWORD:-}" ]; then
-    ACR_LOGIN_USERNAME="$ACR_USERNAME"
-    ACR_LOGIN_PASSWORD="$ACR_PASSWORD"
-    return 0
-  fi
-
-  required_env ALIYUN_REGION
-
-  local response
-  local args
-  args=(cr GetAuthorizationToken --RegionId "$ALIYUN_REGION" --endpoint "cr.${ALIYUN_REGION}.aliyuncs.com")
-  if [ -n "${ACR_INSTANCE_ID:-}" ]; then
-    args+=(--InstanceId "$ACR_INSTANCE_ID")
-  fi
-
-  if ! response="$(aliyun "${args[@]}")"; then
-    echo "Could not get an ACR temporary token. Set ACR_USERNAME and ACR_PASSWORD if this Personal Edition instance does not support temporary tokens." >&2
-    return 1
-  fi
-
-  ACR_LOGIN_USERNAME="$(jq -r '.TempUsername // .tempUsername // empty' <<< "$response")"
-  ACR_LOGIN_PASSWORD="$(jq -r '.AuthorizationToken // .authorizationToken // empty' <<< "$response")"
-
-  if [ -z "$ACR_LOGIN_USERNAME" ] || [ -z "$ACR_LOGIN_PASSWORD" ]; then
-    echo "ACR token response did not contain TempUsername and AuthorizationToken." >&2
-    return 1
-  fi
-
-  mask_value "$ACR_LOGIN_USERNAME"
-  mask_value "$ACR_LOGIN_PASSWORD"
-}
-
-resolve_acr_pull_registry() {
-  if [ -n "${ACR_PULL_REGISTRY:-}" ]; then
-    return 0
-  fi
-
-  ACR_PULL_REGISTRY="$ACR_REGISTRY"
-
-  if [[ "$ACR_REGISTRY" =~ ^(crpi-[^.]+)\.(cn-[^.]+)\.personal\.cr\.aliyuncs\.com$ ]]; then
-    ACR_PULL_REGISTRY="${BASH_REMATCH[1]}-vpc.${BASH_REMATCH[2]}.personal.cr.aliyuncs.com"
-  elif [[ "$ACR_REGISTRY" =~ ^registry\.(cn-[^.]+)\.aliyuncs\.com$ ]]; then
-    ACR_PULL_REGISTRY="registry-vpc.${BASH_REMATCH[1]}.aliyuncs.com"
-  fi
-}
-
-resolve_open_webui_pull_image() {
-  resolve_acr_pull_registry
-
-  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ] && [[ "$OPEN_WEBUI_IMAGE" == "$ACR_REGISTRY/"* ]]; then
-    OPEN_WEBUI_PULL_IMAGE="${ACR_PULL_REGISTRY}/${OPEN_WEBUI_IMAGE#"$ACR_REGISTRY/"}"
-  else
-    OPEN_WEBUI_PULL_IMAGE="$OPEN_WEBUI_IMAGE"
-  fi
-}
-
 file_to_base64() {
   base64 < "$1" | tr -d '\n'
 }
@@ -167,45 +110,38 @@ wait_for_command() {
 main() {
   required_env ALIYUN_REGION
   required_env ECS_INSTANCE_ID
-  required_env OPEN_WEBUI_IMAGE
-  required_env OPEN_WEBUI_ENV_HAI_B64
-  required_env NEW_API_OPENWEBUI_TOKEN
-  required_env DATABASE_URL
-  required_env PGVECTOR_DB_URL
+  required_env NEW_API_DATABASE_URL
+  required_env NEW_API_SESSION_SECRET
+  required_env NEW_API_CRYPTO_SECRET
 
-  local app_port="${APP_PORT:-3000}"
+  local new_api_image="${NEW_API_IMAGE:-calciumion/new-api:v1.0.0-rc.8}"
+  local new_api_port="${NEW_API_PORT:-3001}"
   local compose_env="$TMP_DIR/compose.env"
-  local env_hai="$TMP_DIR/.env.hai"
-  local env_open_webui="$TMP_DIR/.env.open-webui"
+  local env_new_api="$TMP_DIR/.env.new-api"
   local docker_config="$TMP_DIR/config.json"
   local prepare_script="$TMP_DIR/prepare.sh"
-  local docker_auth
   local run_response
   local invoke_id
 
-  required_env ACR_REGISTRY
-  resolve_open_webui_pull_image
+  mask_value "$NEW_API_DATABASE_URL"
+  mask_value "$NEW_API_SESSION_SECRET"
+  mask_value "$NEW_API_CRYPTO_SECRET"
 
-  printf '%s' "$OPEN_WEBUI_ENV_HAI_B64" | base64 -d > "$env_hai"
   {
-    printf 'OPEN_WEBUI_IMAGE=%s\n' "$OPEN_WEBUI_PULL_IMAGE"
-    printf 'OPEN_WEBUI_PORT=%s\n' "$app_port"
-    printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
-    printf 'PGVECTOR_DB_URL=%s\n' "$PGVECTOR_DB_URL"
-    printf 'DEPLOY_TARGET=open-webui\n'
-    printf 'OFFLINE_MODE=%s\n' "${OFFLINE_MODE:-true}"
-    printf 'RAG_EMBEDDING_MODEL_AUTO_UPDATE=%s\n' "${RAG_EMBEDDING_MODEL_AUTO_UPDATE:-false}"
-    printf 'REDIS_URL=%s\n' "${REDIS_URL:-}"
-    printf 'WEBSOCKET_MANAGER=%s\n' "${WEBSOCKET_MANAGER:-}"
-    printf 'WEBSOCKET_REDIS_URL=%s\n' "${WEBSOCKET_REDIS_URL:-${REDIS_URL:-}}"
+    printf 'NEW_API_IMAGE=%s\n' "$new_api_image"
+    printf 'NEW_API_PORT=%s\n' "$new_api_port"
+    printf 'DEPLOY_TARGET=new-api\n'
   } > "$compose_env"
   {
-    printf 'ENABLE_OPENAI_API=True\n'
-    printf 'OPENAI_API_BASE_URL=http://new-api:3000/v1\n'
-    printf 'OPENAI_API_BASE_URLS=http://new-api:3000/v1\n'
-    printf 'OPENAI_API_KEY=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
-    printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
-  } > "$env_open_webui"
+    printf 'PORT=3000\n'
+    printf 'TZ=Asia/Shanghai\n'
+    printf 'SQL_DSN=%s\n' "$NEW_API_DATABASE_URL"
+    printf 'SESSION_SECRET=%s\n' "$NEW_API_SESSION_SECRET"
+    printf 'CRYPTO_SECRET=%s\n' "$NEW_API_CRYPTO_SECRET"
+    printf 'MEMORY_CACHE_ENABLED=true\n'
+    printf 'BATCH_UPDATE_ENABLED=true\n'
+  } > "$env_new_api"
+  jq -n '{auths: {}}' > "$docker_config"
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -213,26 +149,13 @@ mkdir -p /opt/open-webui /root/.docker
 chmod 700 /opt/open-webui /root/.docker
 SCRIPT
 
-  resolve_acr_credentials
-  docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
-  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ]; then
-    jq -n \
-      --arg push_registry "$ACR_REGISTRY" \
-      --arg pull_registry "$ACR_PULL_REGISTRY" \
-      --arg auth "$docker_auth" \
-      '{auths: {($push_registry): {auth: $auth}, ($pull_registry): {auth: $auth}}}' > "$docker_config"
-  else
-    jq -n --arg registry "$ACR_REGISTRY" --arg auth "$docker_auth" \
-      '{auths: {($registry): {auth: $auth}}}' > "$docker_config"
-  fi
-
   run_response="$(aliyun ecs RunCommand \
     --RegionId "$ALIYUN_REGION" \
     --InstanceId.1 "$ECS_INSTANCE_ID" \
     --Type RunShellScript \
     --CommandContent "$(file_to_base64 "$prepare_script")" \
     --ContentEncoding Base64 \
-    --Name "open-webui-prepare-${GITHUB_RUN_ID:-manual}" \
+    --Name "new-api-prepare-${GITHUB_RUN_ID:-manual}" \
     --Timeout 300 \
     --WorkingDir "/root")"
 
@@ -243,10 +166,9 @@ SCRIPT
   fi
   wait_for_command "$invoke_id"
 
-  send_file "$REPO_ROOT/deploy/aliyun/docker-compose.open-webui.yml" "docker-compose.open-webui.yml" "/opt/open-webui" "0600"
+  send_file "$REPO_ROOT/deploy/aliyun/docker-compose.new-api.yml" "docker-compose.new-api.yml" "/opt/open-webui" "0600"
   send_file "$compose_env" ".env" "/opt/open-webui" "0600"
-  send_file "$env_hai" ".env.hai" "/opt/open-webui" "0600"
-  send_file "$env_open_webui" ".env.open-webui" "/opt/open-webui" "0600"
+  send_file "$env_new_api" ".env.new-api" "/opt/open-webui" "0600"
   send_file "$docker_config" "config.json" "/root/.docker" "0600"
 
   run_response="$(aliyun ecs RunCommand \
@@ -255,7 +177,7 @@ SCRIPT
     --Type RunShellScript \
     --CommandContent "$(file_to_base64 "$REPO_ROOT/deploy/aliyun/scripts/ecs-deploy.sh")" \
     --ContentEncoding Base64 \
-    --Name "open-webui-deploy-${GITHUB_RUN_ID:-manual}" \
+    --Name "new-api-deploy-${GITHUB_RUN_ID:-manual}" \
     --Timeout 1800 \
     --WorkingDir "/opt/open-webui")"
 

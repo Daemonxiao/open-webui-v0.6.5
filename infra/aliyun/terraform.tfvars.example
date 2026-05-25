@@ -3,6 +3,8 @@ project_name            = "open-webui"
 environment             = "hai"
 app_port                = 3000
 app_ingress_cidr_blocks = ["0.0.0.0/0"]
+new_api_port                = 3001
+new_api_ingress_cidr_blocks = ["0.0.0.0/0"]
 
 # Leave empty to auto-select a 2C4G type in the selected zone.
 instance_type = ""
@@ -14,6 +16,8 @@ zone_id = ""
 rds_engine_version   = "13.0"
 rds_instance_type    = ""
 rds_instance_storage = 30
+new_api_database_name    = "newapi"
+new_api_rds_account_name = "newapi"
 
 # Redis is not required for the default single ECS deployment.
 # Set both values only if you later deploy multiple Open WebUI instances.

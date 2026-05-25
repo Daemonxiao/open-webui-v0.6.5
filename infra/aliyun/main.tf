@@ -98,6 +98,20 @@ resource "alicloud_security_group_rule" "app_ingress" {
   description       = "Open WebUI public access"
 }
 
+resource "alicloud_security_group_rule" "new_api_ingress" {
+  for_each = toset(var.new_api_ingress_cidr_blocks)
+
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  nic_type          = "intranet"
+  policy            = "accept"
+  port_range        = "${var.new_api_port}/${var.new_api_port}"
+  priority          = 2
+  security_group_id = alicloud_security_group.app.id
+  cidr_ip           = each.value
+  description       = "New API public access"
+}
+
 resource "alicloud_security_group_rule" "ssh_ingress" {
   for_each = toset(var.ssh_ingress_cidr_blocks)
 
@@ -224,6 +238,12 @@ resource "random_password" "rds" {
   override_special = "_"
 }
 
+resource "random_password" "new_api_rds" {
+  length           = 24
+  special          = true
+  override_special = "_"
+}
+
 resource "alicloud_rds_service_linked_role" "postgres" {
   service_name = "AliyunServiceRoleForRdsPgsqlOnEcs"
 }
@@ -251,6 +271,12 @@ resource "alicloud_db_database" "app" {
   character_set  = "UTF8,C,en_US.utf8"
 }
 
+resource "alicloud_db_database" "new_api" {
+  instance_id    = alicloud_db_instance.postgres.id
+  data_base_name = var.new_api_database_name
+  character_set  = "UTF8,C,en_US.utf8"
+}
+
 resource "alicloud_db_account" "app" {
   db_instance_id   = alicloud_db_instance.postgres.id
   account_name     = var.rds_account_name
@@ -258,9 +284,23 @@ resource "alicloud_db_account" "app" {
   account_type     = "Normal"
 }
 
+resource "alicloud_db_account" "new_api" {
+  db_instance_id   = alicloud_db_instance.postgres.id
+  account_name     = var.new_api_rds_account_name
+  account_password = random_password.new_api_rds.result
+  account_type     = "Normal"
+}
+
 resource "alicloud_db_account_privilege" "app" {
   instance_id  = alicloud_db_instance.postgres.id
   account_name = alicloud_db_account.app.account_name
   db_names     = [var.rds_database_name]
+  privilege    = "DBOwner"
+}
+
+resource "alicloud_db_account_privilege" "new_api" {
+  instance_id  = alicloud_db_instance.postgres.id
+  account_name = alicloud_db_account.new_api.account_name
+  db_names     = [var.new_api_database_name]
   privilege    = "DBOwner"
 }

@@ -1,0 +1,90 @@
+name: Alibaba Cloud Deploy New API
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+  NEW_API_IMAGE: ${{ vars.NEW_API_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
+  NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
+
+jobs:
+  deploy-new-api:
+    name: Deploy New API to ECS
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    env:
+      ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+      NEW_API_IMAGE: ${{ vars.NEW_API_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
+      NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALICLOUD_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      NEW_API_SESSION_SECRET: ${{ secrets.NEW_API_SESSION_SECRET }}
+      NEW_API_CRYPTO_SECRET: ${{ secrets.NEW_API_CRYPTO_SECRET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deploy settings
+        run: |
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          test -n "$TF_STATE_BUCKET"
+          test -n "$NEW_API_IMAGE"
+          test -n "$NEW_API_PORT"
+          test -n "$NEW_API_SESSION_SECRET"
+          test -n "$NEW_API_CRYPTO_SECRET"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install Alibaba Cloud CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -fsSL https://aliyuncli.alicdn.com/install.sh | sudo bash
+          aliyun configure set \
+            --mode AK \
+            --region "$ALIYUN_REGION" \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+          aliyun version
+
+      - name: Read Terraform outputs
+        run: |
+          terraform -chdir=infra/aliyun init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=open-webui/hai/terraform.tfstate" \
+            -backend-config="region=$ALIYUN_REGION" \
+            -backend-config="tablestore_endpoint=https://${TF_LOCK_INSTANCE}.${ALIYUN_REGION}.ots.aliyuncs.com" \
+            -backend-config="tablestore_table=$TF_LOCK_TABLE"
+          echo "ECS_INSTANCE_ID=$(terraform -chdir=infra/aliyun output -raw instance_id)" >> "$GITHUB_ENV"
+          echo "NEW_API_URL=$(terraform -chdir=infra/aliyun output -raw new_api_url)" >> "$GITHUB_ENV"
+          echo "NEW_API_STATUS_URL=$(terraform -chdir=infra/aliyun output -raw new_api_status_url)" >> "$GITHUB_ENV"
+          new_api_database_url="$(terraform -chdir=infra/aliyun output -raw new_api_database_url)"
+          echo "::add-mask::$new_api_database_url"
+          echo "NEW_API_DATABASE_URL=$new_api_database_url" >> "$GITHUB_ENV"
+
+      - name: Deploy New API through ECS Cloud Assistant
+        run: bash deploy/aliyun/scripts/cloud-assistant-deploy-new-api.sh
+
+      - name: Verify New API status endpoint
+        run: curl --retry 30 --retry-all-errors --retry-delay 5 --fail "$NEW_API_STATUS_URL"
+
+      - name: Print New API URL
+        run: echo "New API is available at $NEW_API_URL"

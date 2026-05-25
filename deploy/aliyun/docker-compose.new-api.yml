@@ -16,10 +16,3 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-
-  open-webui:
-    extends:
-      file: docker-compose.open-webui.yml
-      service: open-webui
-    depends_on:
-      - new-api

@@ -46,6 +46,18 @@ variable "app_ingress_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "new_api_port" {
+  description = "Public TCP port for the New API web UI and API."
+  type        = number
+  default     = 3001
+}
+
+variable "new_api_ingress_cidr_blocks" {
+  description = "CIDR blocks allowed to reach the New API public port."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "ssh_ingress_cidr_blocks" {
   description = "Optional CIDR blocks allowed to reach SSH. Empty keeps SSH closed."
   type        = list(string)
@@ -170,6 +182,18 @@ variable "rds_account_name" {
   description = "PostgreSQL account name for Open WebUI."
   type        = string
   default     = "openwebui"
+}
+
+variable "new_api_database_name" {
+  description = "PostgreSQL database name for New API."
+  type        = string
+  default     = "newapi"
+}
+
+variable "new_api_rds_account_name" {
+  description = "PostgreSQL account name for New API."
+  type        = string
+  default     = "newapi"
 }
 
 variable "redis_url" {

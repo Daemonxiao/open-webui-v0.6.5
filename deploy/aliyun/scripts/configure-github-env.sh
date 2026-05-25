@@ -7,6 +7,8 @@ ACR_REGISTRY="${ACR_REGISTRY:-registry.cn-beijing.aliyuncs.com}"
 ACR_REPOSITORY="${ACR_REPOSITORY:-open-webui}"
 ACR_INSTANCE_ID="${ACR_INSTANCE_ID:-}"
 APP_PORT="${APP_PORT:-3000}"
+NEW_API_PORT="${NEW_API_PORT:-3001}"
+NEW_API_IMAGE="${NEW_API_IMAGE:-calciumion/new-api:v1.0.0-rc.8}"
 TF_LOCK_INSTANCE="${TF_LOCK_INSTANCE:-ow-hai-tf-lock}"
 TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform_locks}"
 
@@ -50,6 +52,18 @@ prompt_value() {
   fi
   IFS= read -r value
   printf '%s' "${value:-$default_value}"
+}
+
+secret_or_generate() {
+  local name="$1"
+  local value="${!name:-}"
+
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return 0
+  fi
+
+  openssl rand -hex 32
 }
 
 prompt_yes_no() {
@@ -113,12 +127,16 @@ main() {
     set_var ACR_INSTANCE_ID "$ACR_INSTANCE_ID"
   fi
   set_var APP_PORT "$APP_PORT"
+  set_var NEW_API_PORT "$NEW_API_PORT"
+  set_var NEW_API_IMAGE "$NEW_API_IMAGE"
   set_var TF_STATE_BUCKET "$tf_state_bucket"
   set_var TF_LOCK_INSTANCE "$TF_LOCK_INSTANCE"
   set_var TF_LOCK_TABLE "$TF_LOCK_TABLE"
 
   set_secret ALIYUN_ACCESS_KEY_ID "$(prompt_secret ALIYUN_ACCESS_KEY_ID)"
   set_secret ALIYUN_ACCESS_KEY_SECRET "$(prompt_secret ALIYUN_ACCESS_KEY_SECRET)"
+  set_secret NEW_API_SESSION_SECRET "$(secret_or_generate NEW_API_SESSION_SECRET)"
+  set_secret NEW_API_CRYPTO_SECRET "$(secret_or_generate NEW_API_CRYPTO_SECRET)"
 
   if [ -n "${ACR_USERNAME:-}" ] || [ -n "${ACR_PASSWORD:-}" ] || prompt_yes_no CONFIGURE_ACR_CREDENTIALS n; then
     set_secret ACR_USERNAME "$(prompt_secret ACR_USERNAME)"
@@ -131,6 +149,12 @@ main() {
     set_secret OPEN_WEBUI_ENV_HAI_B64 "$(base64 < .env.hai | tr -d '\n')"
   else
     set_secret OPEN_WEBUI_ENV_HAI_B64 "$(prompt_secret OPEN_WEBUI_ENV_HAI_B64)"
+  fi
+
+  if [ -n "${NEW_API_OPENWEBUI_TOKEN:-}" ]; then
+    set_secret NEW_API_OPENWEBUI_TOKEN "$NEW_API_OPENWEBUI_TOKEN"
+  else
+    echo "Skipping NEW_API_OPENWEBUI_TOKEN. Set it after creating an Open WebUI token in the New API web UI."
   fi
 
   echo "GitHub environment ${ENVIRONMENT_NAME} is configured for ${repo}."

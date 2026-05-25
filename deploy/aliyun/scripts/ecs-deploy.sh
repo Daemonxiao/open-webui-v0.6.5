@@ -4,6 +4,8 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/open-webui}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/data}"
 CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
+NEW_API_CONTAINER_NAME="${NEW_API_CONTAINER_NAME:-new-api-hai}"
+DEPLOY_TARGET="${DEPLOY_TARGET:-open-webui}"
 HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
 HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
 
@@ -41,6 +43,32 @@ install_container_runtime() {
   fi
 
   docker version >/dev/null
+  install_docker_compose
+}
+
+install_docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y docker-compose-plugin || true
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y docker-compose-plugin || true
+  elif command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin || true
+  fi
+
+  if docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  docker compose version >/dev/null
 }
 
 start_container_service() {
@@ -105,16 +133,8 @@ deploy_open_webui() {
   . "$APP_DIR/.env"
   set +a
 
-  pull_image
-  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-  docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    -p "${OPEN_WEBUI_PORT:-3000}:8080" \
-    --env-file "$APP_DIR/.env.hai" \
-    --env-file "$APP_DIR/.env" \
-    -v "$DATA_DIR:/app/backend/data" \
-    "$OPEN_WEBUI_IMAGE"
+  docker compose -f docker-compose.open-webui.yml pull
+  docker compose -f docker-compose.open-webui.yml up -d
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
@@ -128,35 +148,80 @@ deploy_open_webui() {
   return 1
 }
 
-pull_image() {
-  local attempt
+deploy_new_api() {
+  cd "$APP_DIR"
+  set -a
+  . "$APP_DIR/.env"
+  set +a
 
-  for attempt in $(seq 1 5); do
-    if docker pull "$OPEN_WEBUI_IMAGE"; then
+  docker compose -f docker-compose.new-api.yml pull
+  docker compose -f docker-compose.new-api.yml up -d
+
+  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
+    if curl --silent --fail "http://127.0.0.1:${NEW_API_PORT:-3001}/api/status" >/dev/null; then
+      docker ps --filter "name=${NEW_API_CONTAINER_NAME}"
       return 0
     fi
-
-    echo "Image pull failed on attempt $attempt, retrying..." >&2
-    sleep $((attempt * 15))
+    sleep "$HEALTH_CHECK_DELAY_SECONDS"
   done
 
-  echo "Image pull failed after 5 attempts." >&2
+  docker logs --tail=200 "$NEW_API_CONTAINER_NAME"
   return 1
+}
+
+deploy_target() {
+  case "$DEPLOY_TARGET" in
+    new-api)
+      deploy_new_api
+      ;;
+    open-webui)
+      deploy_open_webui
+      ;;
+    all)
+      deploy_new_api
+      deploy_open_webui
+      ;;
+    *)
+      echo "Unsupported DEPLOY_TARGET: $DEPLOY_TARGET" >&2
+      return 1
+      ;;
+  esac
 }
 
 main() {
   umask 077
   mkdir -p "$APP_DIR" /root/.docker
 
-  wait_for_file "$APP_DIR/docker-compose.yml"
   wait_for_file "$APP_DIR/.env"
-  wait_for_file "$APP_DIR/.env.hai"
   wait_for_file "/root/.docker/config.json"
+  case "$DEPLOY_TARGET" in
+    new-api)
+      wait_for_file "$APP_DIR/docker-compose.new-api.yml"
+      wait_for_file "$APP_DIR/.env.new-api"
+      ;;
+    open-webui)
+      wait_for_file "$APP_DIR/docker-compose.open-webui.yml"
+      wait_for_file "$APP_DIR/.env.hai"
+      wait_for_file "$APP_DIR/.env.open-webui"
+      ;;
+    all)
+      wait_for_file "$APP_DIR/docker-compose.new-api.yml"
+      wait_for_file "$APP_DIR/docker-compose.open-webui.yml"
+      wait_for_file "$APP_DIR/.env.new-api"
+      wait_for_file "$APP_DIR/.env.hai"
+      wait_for_file "$APP_DIR/.env.open-webui"
+      ;;
+    *)
+      echo "Unsupported DEPLOY_TARGET: $DEPLOY_TARGET" >&2
+      return 1
+      ;;
+  esac
 
-  chmod 600 "$APP_DIR/.env" "$APP_DIR/.env.hai" /root/.docker/config.json
+  chmod 600 "$APP_DIR"/.env* /root/.docker/config.json
   install_container_runtime
   mount_data_disk
-  deploy_open_webui
+  mkdir -p "$APP_DIR/new-api-data" "$APP_DIR/new-api-logs"
+  deploy_target
 }
 
 main "$@"

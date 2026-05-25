@@ -30,11 +30,14 @@ Environment secrets:
 - `ALIYUN_ACCESS_KEY_ID`
 - `ALIYUN_ACCESS_KEY_SECRET`
 - `OPEN_WEBUI_ENV_HAI_B64`
+- `NEW_API_SESSION_SECRET`
+- `NEW_API_CRYPTO_SECRET`
 
 Optional environment secrets:
 
 - `ACR_USERNAME`
 - `ACR_PASSWORD`
+- `NEW_API_OPENWEBUI_TOKEN`
 
 By default, workflows use `aliyun/acr-login@v1` with the Alibaba Cloud AccessKey to log in to ACR. If ACR returns `denied: requested access to the resource is denied` while pushing the image, either grant that RAM user push permission to the repository or set `ACR_USERNAME` and `ACR_PASSWORD` from the ACR Access Credential page. When both ACR secrets are present, the build and deploy workflows use them before trying AccessKey-based ACR login.
 
@@ -65,6 +68,8 @@ Environment variables:
 - `ACR_REPOSITORY=open-webui`
 - `ACR_INSTANCE_ID=<enterprise-instance-id>` only for ACR Enterprise Edition
 - `APP_PORT=3000`
+- `NEW_API_PORT=3001`
+- `NEW_API_IMAGE=calciumion/new-api:v1.0.0-rc.8`
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
 - `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
@@ -74,9 +79,12 @@ Environment variables:
 1. Run the `Alibaba Cloud Infra` workflow with `stack=bootstrap` and `apply=true`.
 2. Run the `Alibaba Cloud Infra` workflow with `stack=aliyun` and `apply=false`; inspect the plan.
 3. Run the same workflow with `stack=aliyun` and `apply=true`.
-4. Run `Alibaba Cloud Deploy`, or push to `main`.
+4. Run `Alibaba Cloud Deploy New API`.
+5. Open the New API web UI, configure upstream channels, and create a token for Open WebUI.
+6. Save that token as the `NEW_API_OPENWEBUI_TOKEN` environment secret.
+7. Run `Alibaba Cloud Deploy`, or push to `main`.
 
-The deploy workflow builds and pushes:
+The Open WebUI deploy workflow builds and pushes:
 
 ```text
 registry.cn-beijing.aliyuncs.com/<ACR_NAMESPACE>/open-webui:git-<commit-sha>
@@ -85,12 +93,41 @@ registry.cn-beijing.aliyuncs.com/<ACR_NAMESPACE>/open-webui:latest
 
 Then it uploads the Compose file, `.env.hai`, and Docker auth config to ECS with Cloud Assistant and runs the deployment command on the instance.
 
+The New API deploy workflow does not build an image. It deploys the pinned public image from `NEW_API_IMAGE`, defaults to `calciumion/new-api:v1.0.0-rc.8`, and exposes the New API web UI on `NEW_API_PORT`.
+
+## New API Gateway
+
+New API is deployed as a separate Docker Compose service on the same ECS instance as Open WebUI:
+
+- Public web UI and API: `http://<EIP>:3001`
+- Internal OpenAI-compatible endpoint for Open WebUI: `http://new-api:3000/v1`
+
+Open WebUI receives:
+
+- `ENABLE_OPENAI_API=True`
+- `OPENAI_API_BASE_URL=http://new-api:3000/v1`
+- `OPENAI_API_KEY=$NEW_API_OPENWEBUI_TOKEN`
+
+The New API web UI is intentionally deployed first, because the Open WebUI token is created inside New API after the first New API deployment. After creating the token, save it:
+
+```sh
+gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai
+```
+
+Then rerun `Alibaba Cloud Deploy`.
+
 ## Database And Redis
 
 Terraform creates an ApsaraDB RDS PostgreSQL instance and outputs a sensitive `database_url`. The deploy workflow reads that output and injects it into the container as:
 
 - `DATABASE_URL`
 - `PGVECTOR_DB_URL`
+
+Terraform also creates a separate PostgreSQL database and account for New API in the same RDS instance. New API receives that connection string as:
+
+- `SQL_DSN`
+
+The Open WebUI and New API databases are intentionally separate even though they share one RDS instance. This avoids schema and migration coupling between the two applications.
 
 Redis is not created by default. The current deployment runs a single Open WebUI container on one ECS instance, and this version of Open WebUI treats `REDIS_URL` and `WEBSOCKET_MANAGER` as optional. Add Redis later only if you deploy multiple Open WebUI instances or need a shared websocket/config state across replicas.
 
@@ -124,6 +161,7 @@ terraform -chdir=infra/aliyun apply
 ## Security Notes
 
 - `.env.hai` stays ignored by Git and Docker build context.
-- Public test access currently opens `APP_PORT` to `0.0.0.0/0`.
+- Public test access currently opens `APP_PORT` and `NEW_API_PORT` to `0.0.0.0/0`.
+- New API exposes an administrative web UI. Change default credentials immediately after first login and restrict ingress before production use.
 - SSH is closed unless `ssh_ingress_cidr_blocks` is explicitly set in Terraform.
 - For production, replace public IP testing with domain + HTTPS and restrict ingress.
