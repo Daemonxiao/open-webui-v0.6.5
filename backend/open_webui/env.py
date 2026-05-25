@@ -966,7 +966,7 @@ SENTENCE_TRANSFORMERS_CROSS_ENCODER_SIGMOID_ACTIVATION_FUNCTION = (
 # OFFLINE_MODE
 ####################################
 
-ENABLE_VERSION_UPDATE_CHECK = os.environ.get('ENABLE_VERSION_UPDATE_CHECK', 'true').lower() == 'true'
+ENABLE_VERSION_UPDATE_CHECK = os.environ.get('ENABLE_VERSION_UPDATE_CHECK', 'false').lower() == 'true'
 OFFLINE_MODE = os.environ.get('OFFLINE_MODE', 'false').lower() == 'true'
 
 if OFFLINE_MODE:
@@ -1019,10 +1019,10 @@ ENABLE_AUDIT_GET_REQUESTS = os.getenv('ENABLE_AUDIT_GET_REQUESTS', 'False').lowe
 # OPENTELEMETRY
 ####################################
 
-ENABLE_OTEL = os.environ.get('ENABLE_OTEL', 'False').lower() == 'true'
-ENABLE_OTEL_TRACES = os.environ.get('ENABLE_OTEL_TRACES', 'False').lower() == 'true'
-ENABLE_OTEL_METRICS = os.environ.get('ENABLE_OTEL_METRICS', 'False').lower() == 'true'
-ENABLE_OTEL_LOGS = os.environ.get('ENABLE_OTEL_LOGS', 'False').lower() == 'true'
+ENABLE_OTEL = False
+ENABLE_OTEL_TRACES = False
+ENABLE_OTEL_METRICS = False
+ENABLE_OTEL_LOGS = False
 
 OTEL_EXPORTER_OTLP_ENDPOINT = os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4317')
 OTEL_METRICS_EXPORTER_OTLP_ENDPOINT = os.environ.get('OTEL_METRICS_EXPORTER_OTLP_ENDPOINT', OTEL_EXPORTER_OTLP_ENDPOINT)
