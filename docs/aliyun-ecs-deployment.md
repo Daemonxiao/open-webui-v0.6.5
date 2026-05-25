@@ -97,7 +97,7 @@ The New API deploy workflow mirrors the pinned public image from `NEW_API_SOURCE
 
 ## New API Gateway
 
-New API is deployed as a separate Docker Compose service on the same ECS instance as Open WebUI:
+New API is deployed as a separate container on the same ECS instance as Open WebUI. Both containers are attached to the `open-webui` container network:
 
 - Public web UI and API: `http://<EIP>:3001`
 - Internal OpenAI-compatible endpoint for Open WebUI: `http://new-api:3000/v1`

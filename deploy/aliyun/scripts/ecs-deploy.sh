@@ -45,32 +45,6 @@ install_container_runtime() {
   fi
 
   docker version >/dev/null
-  install_docker_compose
-}
-
-install_docker_compose() {
-  if docker compose version >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if command -v dnf >/dev/null 2>&1; then
-    timeout 300 dnf install -y docker-compose-plugin || true
-  elif command -v yum >/dev/null 2>&1; then
-    timeout 300 yum install -y docker-compose-plugin || true
-  elif command -v apt-get >/dev/null 2>&1; then
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y docker-compose-plugin || true
-  fi
-
-  if docker compose version >/dev/null 2>&1; then
-    return 0
-  fi
-
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  timeout 180 curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-  docker compose version >/dev/null
 }
 
 start_container_service() {
@@ -133,22 +107,18 @@ print_docker_diagnostics() {
   cd "$APP_DIR"
   echo "Docker version:"
   docker version || true
-  echo "Docker Compose version:"
-  docker compose version || true
   echo "Docker containers:"
   docker ps -a || true
-  if [ -f docker-compose.new-api.yml ]; then
-    echo "New API compose status:"
-    docker compose -f docker-compose.new-api.yml ps || true
-  fi
-  if [ -f docker-compose.open-webui.yml ]; then
-    echo "Open WebUI compose status:"
-    docker compose -f docker-compose.open-webui.yml ps || true
-  fi
+  echo "Docker networks:"
+  docker network ls || true
   echo "New API logs:"
   docker logs --tail=200 "$NEW_API_CONTAINER_NAME" || true
   echo "Open WebUI logs:"
   docker logs --tail=200 "$CONTAINER_NAME" || true
+}
+
+ensure_app_network() {
+  docker network inspect open-webui >/dev/null 2>&1 || docker network create open-webui
 }
 
 deploy_open_webui() {
@@ -157,8 +127,19 @@ deploy_open_webui() {
   . "$APP_DIR/.env"
   set +a
 
-  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker compose -f docker-compose.open-webui.yml pull
-  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker compose -f docker-compose.open-webui.yml up -d
+  ensure_app_network
+  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker pull "$OPEN_WEBUI_IMAGE"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker run -d \
+    --name "$CONTAINER_NAME" \
+    --restart unless-stopped \
+    --network open-webui \
+    -p "${OPEN_WEBUI_PORT:-3000}:8080" \
+    --env-file "$APP_DIR/.env.hai" \
+    --env-file "$APP_DIR/.env.open-webui" \
+    --env-file "$APP_DIR/.env" \
+    -v "$DATA_DIR:/app/backend/data" \
+    "$OPEN_WEBUI_IMAGE"
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
@@ -178,8 +159,18 @@ deploy_new_api() {
   . "$APP_DIR/.env"
   set +a
 
-  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker compose -f docker-compose.new-api.yml pull
-  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker compose -f docker-compose.new-api.yml up -d
+  ensure_app_network
+  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker pull "$NEW_API_IMAGE"
+  docker rm -f "$NEW_API_CONTAINER_NAME" >/dev/null 2>&1 || true
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker run -d \
+    --name "$NEW_API_CONTAINER_NAME" \
+    --restart unless-stopped \
+    --network open-webui \
+    -p "${NEW_API_PORT:-3001}:3000" \
+    --env-file "$APP_DIR/.env.new-api" \
+    -v "$APP_DIR/new-api-data:/data" \
+    -v "$APP_DIR/new-api-logs:/app/logs" \
+    "$NEW_API_IMAGE"
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${NEW_API_PORT:-3001}/api/status" >/dev/null; then
@@ -224,17 +215,13 @@ main() {
 
   case "$DEPLOY_TARGET" in
     new-api)
-      wait_for_file "$APP_DIR/docker-compose.new-api.yml"
       wait_for_file "$APP_DIR/.env.new-api"
       ;;
     open-webui)
-      wait_for_file "$APP_DIR/docker-compose.open-webui.yml"
       wait_for_file "$APP_DIR/.env.hai"
       wait_for_file "$APP_DIR/.env.open-webui"
       ;;
     all)
-      wait_for_file "$APP_DIR/docker-compose.new-api.yml"
-      wait_for_file "$APP_DIR/docker-compose.open-webui.yml"
       wait_for_file "$APP_DIR/.env.new-api"
       wait_for_file "$APP_DIR/.env.hai"
       wait_for_file "$APP_DIR/.env.open-webui"
