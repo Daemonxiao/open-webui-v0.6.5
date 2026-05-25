@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/opt/open-webui}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/data}"
 CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
 NEW_API_CONTAINER_NAME="${NEW_API_CONTAINER_NAME:-new-api-hai}"
+NEW_API_NETWORK_ALIAS="${NEW_API_NETWORK_ALIAS:-new-api}"
 DEPLOY_TARGET="${DEPLOY_TARGET:-open-webui}"
 HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
 HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
@@ -166,6 +167,7 @@ deploy_new_api() {
     --name "$NEW_API_CONTAINER_NAME" \
     --restart unless-stopped \
     --network open-webui \
+    --network-alias "$NEW_API_NETWORK_ALIAS" \
     -p "${NEW_API_PORT:-3001}:3000" \
     --env-file "$APP_DIR/.env.new-api" \
     -v "$APP_DIR/new-api-data:/data" \
