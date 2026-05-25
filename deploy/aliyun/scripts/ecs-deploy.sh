@@ -194,6 +194,10 @@ main() {
 
   wait_for_file "$APP_DIR/.env"
   wait_for_file "/root/.docker/config.json"
+  set -a
+  . "$APP_DIR/.env"
+  set +a
+
   case "$DEPLOY_TARGET" in
     new-api)
       wait_for_file "$APP_DIR/docker-compose.new-api.yml"
