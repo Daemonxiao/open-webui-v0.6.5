@@ -1,0 +1,14 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.6.5
+    container_name: open-webui-hai
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+    env_file:
+      - .env.hai
+    volumes:
+      - open-webui-hai:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  open-webui-hai: {}
