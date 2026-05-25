@@ -24,6 +24,63 @@ mask_value() {
   fi
 }
 
+resolve_acr_credentials() {
+  if [ -n "${ACR_USERNAME:-}" ] && [ -n "${ACR_PASSWORD:-}" ]; then
+    ACR_LOGIN_USERNAME="$ACR_USERNAME"
+    ACR_LOGIN_PASSWORD="$ACR_PASSWORD"
+    return 0
+  fi
+
+  required_env ALIYUN_REGION
+
+  local response
+  local args
+  args=(cr GetAuthorizationToken --RegionId "$ALIYUN_REGION" --endpoint "cr.${ALIYUN_REGION}.aliyuncs.com")
+  if [ -n "${ACR_INSTANCE_ID:-}" ]; then
+    args+=(--InstanceId "$ACR_INSTANCE_ID")
+  fi
+
+  if ! response="$(aliyun "${args[@]}")"; then
+    echo "Could not get an ACR temporary token. Set ACR_USERNAME and ACR_PASSWORD if this ACR instance does not support temporary tokens." >&2
+    return 1
+  fi
+
+  ACR_LOGIN_USERNAME="$(jq -r '.TempUsername // .tempUsername // empty' <<< "$response")"
+  ACR_LOGIN_PASSWORD="$(jq -r '.AuthorizationToken // .authorizationToken // empty' <<< "$response")"
+
+  if [ -z "$ACR_LOGIN_USERNAME" ] || [ -z "$ACR_LOGIN_PASSWORD" ]; then
+    echo "ACR token response did not contain TempUsername and AuthorizationToken." >&2
+    return 1
+  fi
+
+  mask_value "$ACR_LOGIN_USERNAME"
+  mask_value "$ACR_LOGIN_PASSWORD"
+}
+
+resolve_acr_pull_registry() {
+  if [ -n "${ACR_PULL_REGISTRY:-}" ]; then
+    return 0
+  fi
+
+  ACR_PULL_REGISTRY="$ACR_REGISTRY"
+
+  if [[ "$ACR_REGISTRY" =~ ^(crpi-[^.]+)\.(cn-[^.]+)\.personal\.cr\.aliyuncs\.com$ ]]; then
+    ACR_PULL_REGISTRY="${BASH_REMATCH[1]}-vpc.${BASH_REMATCH[2]}.personal.cr.aliyuncs.com"
+  elif [[ "$ACR_REGISTRY" =~ ^registry\.(cn-[^.]+)\.aliyuncs\.com$ ]]; then
+    ACR_PULL_REGISTRY="registry-vpc.${BASH_REMATCH[1]}.aliyuncs.com"
+  fi
+}
+
+resolve_new_api_pull_image() {
+  resolve_acr_pull_registry
+
+  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ] && [[ "$NEW_API_IMAGE" == "$ACR_REGISTRY/"* ]]; then
+    NEW_API_PULL_IMAGE="${ACR_PULL_REGISTRY}/${NEW_API_IMAGE#"$ACR_REGISTRY/"}"
+  else
+    NEW_API_PULL_IMAGE="$NEW_API_IMAGE"
+  fi
+}
+
 file_to_base64() {
   base64 < "$1" | tr -d '\n'
 }
@@ -110,25 +167,28 @@ wait_for_command() {
 main() {
   required_env ALIYUN_REGION
   required_env ECS_INSTANCE_ID
+  required_env ACR_REGISTRY
+  required_env NEW_API_IMAGE
   required_env NEW_API_DATABASE_URL
   required_env NEW_API_SESSION_SECRET
   required_env NEW_API_CRYPTO_SECRET
 
-  local new_api_image="${NEW_API_IMAGE:-calciumion/new-api:v1.0.0-rc.8}"
   local new_api_port="${NEW_API_PORT:-3001}"
   local compose_env="$TMP_DIR/compose.env"
   local env_new_api="$TMP_DIR/.env.new-api"
   local docker_config="$TMP_DIR/config.json"
   local prepare_script="$TMP_DIR/prepare.sh"
+  local docker_auth
   local run_response
   local invoke_id
 
   mask_value "$NEW_API_DATABASE_URL"
   mask_value "$NEW_API_SESSION_SECRET"
   mask_value "$NEW_API_CRYPTO_SECRET"
+  resolve_new_api_pull_image
 
   {
-    printf 'NEW_API_IMAGE=%s\n' "$new_api_image"
+    printf 'NEW_API_IMAGE=%s\n' "$NEW_API_PULL_IMAGE"
     printf 'NEW_API_PORT=%s\n' "$new_api_port"
     printf 'DEPLOY_TARGET=new-api\n'
   } > "$compose_env"
@@ -141,7 +201,20 @@ main() {
     printf 'MEMORY_CACHE_ENABLED=true\n'
     printf 'BATCH_UPDATE_ENABLED=true\n'
   } > "$env_new_api"
-  jq -n '{auths: {}}' > "$docker_config"
+
+  resolve_acr_credentials
+  docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
+  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ]; then
+    jq -n \
+      --arg push_registry "$ACR_REGISTRY" \
+      --arg pull_registry "$ACR_PULL_REGISTRY" \
+      --arg auth "$docker_auth" \
+      '{auths: {($push_registry): {auth: $auth}, ($pull_registry): {auth: $auth}}}' > "$docker_config"
+  else
+    jq -n --arg registry "$ACR_REGISTRY" --arg auth "$docker_auth" \
+      '{auths: {($registry): {auth: $auth}}}' > "$docker_config"
+  fi
+
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail

@@ -8,6 +8,8 @@ NEW_API_CONTAINER_NAME="${NEW_API_CONTAINER_NAME:-new-api-hai}"
 DEPLOY_TARGET="${DEPLOY_TARGET:-open-webui}"
 HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
 HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
+COMPOSE_PULL_TIMEOUT_SECONDS="${COMPOSE_PULL_TIMEOUT_SECONDS:-900}"
+COMPOSE_UP_TIMEOUT_SECONDS="${COMPOSE_UP_TIMEOUT_SECONDS:-300}"
 
 wait_for_file() {
   local path="$1"
@@ -127,14 +129,36 @@ mount_data_disk() {
   mount "$DATA_DIR"
 }
 
+print_docker_diagnostics() {
+  cd "$APP_DIR"
+  echo "Docker version:"
+  docker version || true
+  echo "Docker Compose version:"
+  docker compose version || true
+  echo "Docker containers:"
+  docker ps -a || true
+  if [ -f docker-compose.new-api.yml ]; then
+    echo "New API compose status:"
+    docker compose -f docker-compose.new-api.yml ps || true
+  fi
+  if [ -f docker-compose.open-webui.yml ]; then
+    echo "Open WebUI compose status:"
+    docker compose -f docker-compose.open-webui.yml ps || true
+  fi
+  echo "New API logs:"
+  docker logs --tail=200 "$NEW_API_CONTAINER_NAME" || true
+  echo "Open WebUI logs:"
+  docker logs --tail=200 "$CONTAINER_NAME" || true
+}
+
 deploy_open_webui() {
   cd "$APP_DIR"
   set -a
   . "$APP_DIR/.env"
   set +a
 
-  docker compose -f docker-compose.open-webui.yml pull
-  docker compose -f docker-compose.open-webui.yml up -d
+  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker compose -f docker-compose.open-webui.yml pull
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker compose -f docker-compose.open-webui.yml up -d
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
@@ -144,7 +168,7 @@ deploy_open_webui() {
     sleep "$HEALTH_CHECK_DELAY_SECONDS"
   done
 
-  docker logs --tail=200 "$CONTAINER_NAME"
+  print_docker_diagnostics
   return 1
 }
 
@@ -154,8 +178,8 @@ deploy_new_api() {
   . "$APP_DIR/.env"
   set +a
 
-  docker compose -f docker-compose.new-api.yml pull
-  docker compose -f docker-compose.new-api.yml up -d
+  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker compose -f docker-compose.new-api.yml pull
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker compose -f docker-compose.new-api.yml up -d
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${NEW_API_PORT:-3001}/api/status" >/dev/null; then
@@ -165,7 +189,7 @@ deploy_new_api() {
     sleep "$HEALTH_CHECK_DELAY_SECONDS"
   done
 
-  docker logs --tail=200 "$NEW_API_CONTAINER_NAME"
+  print_docker_diagnostics
   return 1
 }
 

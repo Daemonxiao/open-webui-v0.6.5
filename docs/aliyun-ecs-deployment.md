@@ -69,7 +69,7 @@ Environment variables:
 - `ACR_INSTANCE_ID=<enterprise-instance-id>` only for ACR Enterprise Edition
 - `APP_PORT=3000`
 - `NEW_API_PORT=3001`
-- `NEW_API_IMAGE=calciumion/new-api:v1.0.0-rc.8`
+- `NEW_API_SOURCE_IMAGE=calciumion/new-api:v1.0.0-rc.8`
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
 - `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
@@ -93,7 +93,7 @@ registry.cn-beijing.aliyuncs.com/<ACR_NAMESPACE>/open-webui:latest
 
 Then it uploads the Compose file, `.env.hai`, and Docker auth config to ECS with Cloud Assistant and runs the deployment command on the instance.
 
-The New API deploy workflow does not build an image. It deploys the pinned public image from `NEW_API_IMAGE`, defaults to `calciumion/new-api:v1.0.0-rc.8`, and exposes the New API web UI on `NEW_API_PORT`.
+The New API deploy workflow mirrors the pinned public image from `NEW_API_SOURCE_IMAGE` to the existing ACR repository, then deploys the mirrored ACR image to ECS. This avoids slow or blocked Docker Hub pulls from the ECS instance. The default source image is `calciumion/new-api:v1.0.0-rc.8`, and the New API web UI is exposed on `NEW_API_PORT`.
 
 ## New API Gateway
 

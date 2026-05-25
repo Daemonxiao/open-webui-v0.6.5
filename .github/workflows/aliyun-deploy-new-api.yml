@@ -8,23 +8,107 @@ permissions:
 
 env:
   ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+  ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
   TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
-  NEW_API_IMAGE: ${{ vars.NEW_API_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
+  NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
   NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
 
 jobs:
-  deploy-new-api:
-    name: Deploy Gateway (New API)
+  mirror-new-api:
+    name: Mirror Gateway image to ACR
     runs-on: ubuntu-latest
     environment: aliyun-hai
     env:
       ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+      ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+      NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Validate image settings
+        run: |
+          test -n "$ACR_NAMESPACE"
+          test -n "$NEW_API_SOURCE_IMAGE"
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          if [ -n "$ACR_USERNAME" ] || [ -n "$ACR_PASSWORD" ]; then
+            test -n "$ACR_USERNAME"
+            test -n "$ACR_PASSWORD"
+          fi
+
+      - name: Set Gateway image
+        id: image
+        run: |
+          source_tag="${NEW_API_SOURCE_IMAGE##*:}"
+          if [ "$source_tag" = "$NEW_API_SOURCE_IMAGE" ]; then
+            source_tag="latest"
+          fi
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:new-api-${source_tag}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "NEW_API_MIRROR_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Login to Alibaba Cloud ACR with password
+        if: env.ACR_USERNAME != '' && env.ACR_PASSWORD != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: Login to Alibaba Cloud ACR
+        if: env.ACR_USERNAME == '' && env.ACR_PASSWORD == '' && env.ACR_INSTANCE_ID == ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Login to Alibaba Cloud ACR Enterprise
+        if: env.ACR_USERNAME == '' && env.ACR_PASSWORD == '' && env.ACR_INSTANCE_ID != ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          instance-id: ${{ env.ACR_INSTANCE_ID }}
+
+      - name: Mirror Gateway image
+        run: |
+          docker pull "$NEW_API_SOURCE_IMAGE"
+          docker tag "$NEW_API_SOURCE_IMAGE" "$NEW_API_MIRROR_IMAGE"
+          docker push "$NEW_API_MIRROR_IMAGE"
+
+  deploy-new-api:
+    name: Deploy Gateway (New API)
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    needs: mirror-new-api
+    env:
+      ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+      ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
-      NEW_API_IMAGE: ${{ vars.NEW_API_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
+      NEW_API_IMAGE: ${{ needs.mirror-new-api.outputs.image }}
       NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
       ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -32,6 +116,8 @@ jobs:
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       NEW_API_SESSION_SECRET: ${{ secrets.NEW_API_SESSION_SECRET }}
       NEW_API_CRYPTO_SECRET: ${{ secrets.NEW_API_CRYPTO_SECRET }}
     steps:
