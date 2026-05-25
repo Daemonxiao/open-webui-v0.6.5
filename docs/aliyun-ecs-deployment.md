@@ -100,13 +100,15 @@ The New API deploy workflow mirrors the pinned public image from `NEW_API_SOURCE
 New API is deployed as a separate container on the same ECS instance as Open WebUI. Both containers are attached to the `open-webui` container network:
 
 - Public web UI and API: `http://<EIP>:3001`
-- Internal OpenAI-compatible endpoint for Open WebUI: `http://new-api:3000/v1`
+- OpenAI-compatible endpoint configured in Open WebUI: `http://host.containers.internal:3001/v1`
 
 Open WebUI receives:
 
 - `ENABLE_OPENAI_API=True`
-- `OPENAI_API_BASE_URL=http://new-api:3000/v1`
+- `OPENAI_API_BASE_URL=http://host.containers.internal:3001/v1`
 - `OPENAI_API_KEY=$NEW_API_OPENWEBUI_TOKEN`
+
+`host.containers.internal` is used because Alibaba Cloud Linux images may provide Docker through Podman compatibility, where container DNS aliases are less reliable than routing through the host port.
 
 The New API web UI is intentionally deployed first, because the Open WebUI token is created inside New API after the first New API deployment. After creating the token, save it:
 

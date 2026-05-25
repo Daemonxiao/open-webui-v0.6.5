@@ -175,6 +175,8 @@ main() {
   required_env PGVECTOR_DB_URL
 
   local app_port="${APP_PORT:-3000}"
+  local new_api_port="${NEW_API_PORT:-3001}"
+  local new_api_openwebui_base_url="${NEW_API_OPENWEBUI_BASE_URL:-http://host.containers.internal:${new_api_port}/v1}"
   local compose_env="$TMP_DIR/compose.env"
   local env_hai="$TMP_DIR/.env.hai"
   local env_open_webui="$TMP_DIR/.env.open-webui"
@@ -202,8 +204,8 @@ main() {
   } > "$compose_env"
   {
     printf 'ENABLE_OPENAI_API=True\n'
-    printf 'OPENAI_API_BASE_URL=http://new-api:3000/v1\n'
-    printf 'OPENAI_API_BASE_URLS=http://new-api:3000/v1\n'
+    printf 'OPENAI_API_BASE_URL=%s\n' "$new_api_openwebui_base_url"
+    printf 'OPENAI_API_BASE_URLS=%s\n' "$new_api_openwebui_base_url"
     printf 'OPENAI_API_KEY=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
     printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
   } > "$env_open_webui"
