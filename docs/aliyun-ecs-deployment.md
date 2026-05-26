@@ -81,7 +81,7 @@ Environment variables:
 3. Run the same workflow with `stack=aliyun` and `apply=true`.
 4. Run `Deploy Gateway (New API) to Alibaba Cloud`.
 5. Open the New API web UI, configure upstream channels, and create a token for Open WebUI.
-6. Save that token as the `NEW_API_OPENWEBUI_TOKEN` environment secret.
+6. Configure that token in the Open WebUI web UI, or save it as the optional `NEW_API_OPENWEBUI_TOKEN` environment secret.
 7. Run `Deploy Open WebUI to Alibaba Cloud`, or push to `main`.
 
 The Open WebUI deploy workflow builds and pushes:
@@ -102,15 +102,17 @@ New API is deployed as a separate container on the same ECS instance as Open Web
 - Public web UI and API: `http://<EIP>:3001`
 - OpenAI-compatible endpoint configured in Open WebUI: `http://host.containers.internal:3001/v1`
 
-Open WebUI receives:
+When `NEW_API_OPENWEBUI_TOKEN` is set as an environment secret, Open WebUI receives:
 
 - `ENABLE_OPENAI_API=True`
 - `OPENAI_API_BASE_URL=http://host.containers.internal:3001/v1`
 - `OPENAI_API_KEY=$NEW_API_OPENWEBUI_TOKEN`
 
+If you configure the OpenAI-compatible connection manually in the Open WebUI web UI, leave `NEW_API_OPENWEBUI_TOKEN` unset. The deploy workflow will not overwrite that UI-managed connection.
+
 `host.containers.internal` is used because Alibaba Cloud Linux images may provide Docker through Podman compatibility, where container DNS aliases are less reliable than routing through the host port.
 
-The New API web UI is intentionally deployed first, because the Open WebUI token is created inside New API after the first New API deployment. After creating the token, save it:
+The New API web UI is intentionally deployed first, because the Open WebUI token is created inside New API after the first New API deployment. You can either configure that token manually in the Open WebUI web UI, or save it as a GitHub environment secret:
 
 ```sh
 gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai

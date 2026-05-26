@@ -142,7 +142,6 @@ jobs:
           test -n "$TF_STATE_BUCKET"
           test -n "$ACR_NAMESPACE"
           test -n "$OPEN_WEBUI_ENV_HAI_B64"
-          test -n "$NEW_API_OPENWEBUI_TOKEN"
           test -n "$OPEN_WEBUI_IMAGE"
           if [ -n "$ACR_USERNAME" ] || [ -n "$ACR_PASSWORD" ]; then
             test -n "$ACR_USERNAME"

@@ -170,7 +170,6 @@ main() {
   required_env ECS_INSTANCE_ID
   required_env OPEN_WEBUI_IMAGE
   required_env OPEN_WEBUI_ENV_HAI_B64
-  required_env NEW_API_OPENWEBUI_TOKEN
   required_env DATABASE_URL
   required_env PGVECTOR_DB_URL
 
@@ -202,13 +201,17 @@ main() {
     printf 'WEBSOCKET_MANAGER=%s\n' "${WEBSOCKET_MANAGER:-}"
     printf 'WEBSOCKET_REDIS_URL=%s\n' "${WEBSOCKET_REDIS_URL:-${REDIS_URL:-}}"
   } > "$compose_env"
-  {
-    printf 'ENABLE_OPENAI_API=True\n'
-    printf 'OPENAI_API_BASE_URL=%s\n' "$new_api_openwebui_base_url"
-    printf 'OPENAI_API_BASE_URLS=%s\n' "$new_api_openwebui_base_url"
-    printf 'OPENAI_API_KEY=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
-    printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
-  } > "$env_open_webui"
+  if [ -n "${NEW_API_OPENWEBUI_TOKEN:-}" ]; then
+    {
+      printf 'ENABLE_OPENAI_API=True\n'
+      printf 'OPENAI_API_BASE_URL=%s\n' "$new_api_openwebui_base_url"
+      printf 'OPENAI_API_BASE_URLS=%s\n' "$new_api_openwebui_base_url"
+      printf 'OPENAI_API_KEY=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
+      printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
+    } > "$env_open_webui"
+  else
+    : > "$env_open_webui"
+  fi
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
