@@ -210,7 +210,7 @@ main() {
       printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
     } > "$env_open_webui"
   else
-    : > "$env_open_webui"
+    printf '# New API is configured in the Open WebUI web UI.\n' > "$env_open_webui"
   fi
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
