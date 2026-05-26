@@ -9,8 +9,9 @@
 	dayjs.extend(localizedFormat);
 	dayjs.extend(calendar);
 
-	import { deleteChatById } from '$lib/apis/chats';
+	import { deleteChatById, getChatById } from '$lib/apis/chats';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
+	import { user as currentUser } from '$lib/stores';
 
 	import Modal from '$lib/components/common/Modal.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
@@ -25,6 +26,7 @@
 	import Link from '../icons/Link.svelte';
 	import LinkSlash from '../icons/LinkSlash.svelte';
 	import Clipboard from '../icons/Clipboard.svelte';
+	import Messages from '../chat/Messages.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -47,9 +49,17 @@
 	export let allChatsLoaded = false;
 	export let chatListLoading = false;
 
-	let selectedChatId = null;
+	let deleteChatId = null;
 	let selectedIdx = 0;
 	let showDeleteConfirmDialog = false;
+	let previewChatId = null;
+	let previewChat = null;
+	let previewHistory = null;
+	let previewSelectedModels = [''];
+	let previewChatLoading = false;
+	let previewChatError = '';
+	let previewRequestId = 0;
+	let lastQuery = query;
 
 	export let onUpdate = () => {};
 	export let onDelete: (id: string) => void = () => {};
@@ -77,14 +87,72 @@
 		}
 		onUpdate();
 	};
+
+	const resetPreview = () => {
+		previewChatId = null;
+		previewChat = null;
+		previewHistory = null;
+		previewSelectedModels = [''];
+		previewChatLoading = false;
+		previewChatError = '';
+		previewRequestId += 1;
+	};
+
+	const selectChatForPreview = async (chat) => {
+		if (variant !== 'drawer' || !chat?.id) {
+			return;
+		}
+
+		const requestId = ++previewRequestId;
+		previewChatId = chat.id;
+		previewChat = chat;
+		previewHistory = null;
+		previewSelectedModels = [''];
+		previewChatError = '';
+		previewChatLoading = true;
+
+		const res = await getChatById(localStorage.token, chat.id).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (requestId !== previewRequestId) {
+			return;
+		}
+
+		previewChatLoading = false;
+
+		if (!res) {
+			previewChatError = $i18n.t('Failed to load chat preview');
+			return;
+		}
+
+		const models = res?.chat?.models;
+		previewChat = res;
+		previewSelectedModels = Array.isArray(models) ? models : [models ?? ''];
+		previewHistory = res?.chat?.history ?? { messages: {}, currentId: null };
+	};
+
+	$: if (variant === 'drawer' && show && query !== lastQuery) {
+		lastQuery = query;
+		resetPreview();
+	}
+
+	$: if (variant === 'drawer' && show && chatList?.length && !previewChatId && !previewChatLoading) {
+		selectChatForPreview(chatList[0]);
+	}
+
+	$: if (!show && previewChatId) {
+		resetPreview();
+	}
 </script>
 
 <ConfirmDialog
 	bind:show={showDeleteConfirmDialog}
 	on:confirm={() => {
-		if (selectedChatId) {
-			deleteHandler(selectedChatId);
-			selectedChatId = null;
+		if (deleteChatId) {
+			deleteHandler(deleteChatId);
+			deleteChatId = null;
 		}
 	}}
 />
@@ -96,7 +164,7 @@
 		? {
 				side: 'right',
 				className:
-					'w-full sm:w-[34rem] lg:w-[42rem] !bg-white dark:!bg-gray-900 shadow-3xl border-l border-gray-100 dark:border-gray-850'
+					'w-full lg:w-[76rem] xl:w-[84rem] !bg-white dark:!bg-gray-900 shadow-3xl border-l border-gray-100 dark:border-gray-850'
 			}
 		: { size: 'lg' })}
 >
@@ -171,12 +239,16 @@
 			{/if}
 
 			<div
-				class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6 {variant === 'drawer'
-					? 'flex-1 min-h-0'
-					: ''}"
+				class=" flex flex-col w-full {variant === 'drawer'
+					? 'flex-1 min-h-0 lg:flex-row lg:space-x-0 lg:gap-4'
+					: 'sm:flex-row sm:justify-center sm:space-x-6'}"
 			>
 				{#if chatList}
-					<div class="w-full {variant === 'drawer' ? 'h-full min-h-0 flex flex-col' : ''}">
+					<div
+						class="w-full {variant === 'drawer'
+							? 'h-1/2 min-h-0 flex flex-col lg:h-full lg:w-[26rem] lg:shrink-0 lg:pr-4'
+							: ''}"
+					>
 						{#if chatList.length > 0}
 							<div class="flex text-xs font-medium mb-1.5">
 								{#if showUserInfo}
@@ -277,7 +349,10 @@
 								{/if}
 
 								<div
-									class=" w-full flex items-center rounded-lg text-sm py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-850"
+									class=" w-full flex items-center rounded-lg text-sm py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-850 {variant ===
+										'drawer' && previewChatId === chat.id
+										? 'bg-gray-50 dark:bg-gray-850'
+										: ''}"
 									draggable="false"
 								>
 									{#if showUserInfo && chat.user_id}
@@ -292,15 +367,27 @@
 											>
 										</div>
 									{/if}
-									<a
-										class={showUserInfo ? 'flex-1' : 'basis-3/5'}
-										href={shareUrl ? `/s/${chat.id}` : `/c/${chat.id}`}
-										on:click={() => (show = false)}
-									>
-										<div class="text-ellipsis line-clamp-1 w-full">
-											{chat?.title}
-										</div>
-									</a>
+									{#if variant === 'drawer'}
+										<button
+											type="button"
+											class="{showUserInfo ? 'flex-1' : 'basis-3/5'} text-left min-w-0"
+											on:click={() => selectChatForPreview(chat)}
+										>
+											<div class="text-ellipsis line-clamp-1 w-full">
+												{chat?.title}
+											</div>
+										</button>
+									{:else}
+										<a
+											class={showUserInfo ? 'flex-1' : 'basis-3/5'}
+											href={shareUrl ? `/s/${chat.id}` : `/c/${chat.id}`}
+											on:click={() => (show = false)}
+										>
+											<div class="text-ellipsis line-clamp-1 w-full">
+												{chat?.title}
+											</div>
+										</a>
+									{/if}
 
 									<div class="{showUserInfo ? 'w-28' : 'basis-2/5'} flex items-center justify-end">
 										<div class="hidden sm:flex text-gray-500 dark:text-gray-400 text-xs">
@@ -376,7 +463,7 @@
 															if (unshareHandler) {
 																unshareHandler(chat.id);
 															} else {
-																selectedChatId = chat.id;
+																deleteChatId = chat.id;
 																showDeleteConfirmDialog = true;
 															}
 														}}
@@ -429,6 +516,77 @@
 							<slot name="footer"></slot>
 						{/if}
 					</div>
+
+					{#if variant === 'drawer'}
+						<div
+							class="mt-4 flex h-1/2 min-h-0 flex-1 flex-col border-t border-gray-100 pt-4 dark:border-gray-850 lg:mt-0 lg:h-full lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0"
+						>
+							<div class="mb-3 flex min-h-10 items-start justify-between gap-3">
+								<div class="min-w-0">
+									<div class="text-sm font-medium line-clamp-1">
+										{previewChat?.title ?? $i18n.t('Select a conversation to preview')}
+									</div>
+									{#if previewChat?.updated_at}
+										<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+											{$i18n.t('Updated at')}: {dayjs(previewChat.updated_at * 1000).format('LLL')}
+										</div>
+									{/if}
+								</div>
+								{#if previewChatId}
+									<a
+										class="shrink-0 rounded-lg px-2 py-1 text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-850 dark:hover:text-gray-200"
+										href={shareUrl ? `/s/${previewChatId}` : `/c/${previewChatId}`}
+										target="_blank"
+										rel="noreferrer"
+									>
+										{$i18n.t('Open')}
+									</a>
+								{/if}
+							</div>
+
+							<div
+								id="messages-container"
+								class="flex-1 min-h-0 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/40 px-3 dark:border-gray-850 dark:bg-gray-950/20 @container"
+							>
+								{#if previewChatLoading}
+									<div class="flex h-full items-center justify-center">
+										<Spinner className="size-5" />
+									</div>
+								{:else if previewChatError}
+									<div
+										class="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400"
+									>
+										{previewChatError}
+									</div>
+								{:else if previewHistory}
+									<Messages
+										className="h-full flex pt-2 pb-8 w-full"
+										chatId={`admin-chat-preview-${previewChatId ?? ''}`}
+										user={$currentUser}
+										prompt=""
+										readOnly={true}
+										editCodeBlock={false}
+										selectedModels={previewSelectedModels}
+										atSelectedModel=""
+										bind:history={previewHistory}
+										autoScroll={false}
+										messagesCount={null}
+										sendMessage={() => {}}
+										continueResponse={() => {}}
+										regenerateResponse={() => {}}
+										mergeResponses={() => {}}
+										chatActionHandler={() => {}}
+									/>
+								{:else}
+									<div
+										class="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400"
+									>
+										{$i18n.t('Select a conversation to preview')}
+									</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
 				{:else}
 					<div class="w-full h-full flex justify-center items-center min-h-20">
 						<Spinner className="size-5" />
