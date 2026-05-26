@@ -6,6 +6,8 @@ services:
       - "${OPEN_WEBUI_PORT:-3000}:8080"
     env_file:
       - .env.hai
+    environment:
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-zh-CN}
     volumes:
       - open-webui-hai:/app/backend/data
     restart: unless-stopped
