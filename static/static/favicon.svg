@@ -1,1 +1,131 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" role="img" aria-label="Internal AI Assistant"><rect x="60" y="60" width="380" height="380" rx="96" fill="#0f172a"/><g fill="none" stroke="#2dd4bf" stroke-width="22" stroke-linecap="round"><path d="M250 250 178 178M250 250 326 166M250 250 338 322M250 250 166 336"/></g><g fill="#f8fafc"><circle cx="250" cy="250" r="32"/><circle cx="178" cy="178" r="32"/><circle cx="326" cy="166" r="32"/><circle cx="338" cy="322" r="32"/><circle cx="166" cy="336" r="32"/></g><g fill="#2dd4bf"><circle cx="250" cy="250" r="20"/><circle cx="178" cy="178" r="20"/><circle cx="326" cy="166" r="20"/><circle cx="338" cy="322" r="20"/><circle cx="166" cy="336" r="20"/></g></svg>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1550" height="1014" viewBox="0 0 1550 1014" role="img" aria-labelledby="title desc">
+  <title id="title">Sparkline AI vector logo</title>
+  <desc id="desc">A clean vector logo with a glowing metallic gold star, blue and white waveform bars, Sparkline text, and AI underline.</desc>
+
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="43%" r="63%">
+      <stop offset="0%" stop-color="#0B2436"/>
+      <stop offset="55%" stop-color="#061827"/>
+      <stop offset="100%" stop-color="#020D16"/>
+    </radialGradient>
+    <linearGradient id="goldStar" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFF3B8"/>
+      <stop offset="27%" stop-color="#FFE070"/>
+      <stop offset="54%" stop-color="#FFB91E"/>
+      <stop offset="76%" stop-color="#FFD765"/>
+      <stop offset="100%" stop-color="#FFF4C5"/>
+    </linearGradient>
+    <radialGradient id="goldStarCore" cx="44%" cy="38%" r="68%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="20%" stop-color="#FFF1A8"/>
+      <stop offset="52%" stop-color="#FFCA2E"/>
+      <stop offset="100%" stop-color="#B46B00"/>
+    </radialGradient>
+    <linearGradient id="centerBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#74D0FF"/>
+      <stop offset="24%" stop-color="#2BAEFF"/>
+      <stop offset="70%" stop-color="#1393EA"/>
+      <stop offset="100%" stop-color="#0075C7"/>
+    </linearGradient>
+    <linearGradient id="barBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#69C8FF"/>
+      <stop offset="52%" stop-color="#159DEA"/>
+      <stop offset="100%" stop-color="#0078CB"/>
+    </linearGradient>
+    <linearGradient id="barWhite" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="55%" stop-color="#F6FBFF"/>
+      <stop offset="100%" stop-color="#E0F0FA"/>
+    </linearGradient>
+    <linearGradient id="barWhiteBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="45%" stop-color="#F2FAFF"/>
+      <stop offset="60%" stop-color="#64CCFF"/>
+      <stop offset="100%" stop-color="#0077CE"/>
+    </linearGradient>
+    <linearGradient id="barWhiteBlueSoft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="48%" stop-color="#F7FCFF"/>
+      <stop offset="65%" stop-color="#66C8FB"/>
+      <stop offset="100%" stop-color="#0085D8"/>
+    </linearGradient>
+    <radialGradient id="whiteDot" cx="40%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="80%" stop-color="#F0F8FF"/>
+      <stop offset="100%" stop-color="#D6EAF8"/>
+    </radialGradient>
+    <linearGradient id="textBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#62C8FF"/>
+      <stop offset="100%" stop-color="#0081D7"/>
+    </linearGradient>
+    <filter id="goldGlow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="10" result="blur1"/>
+      <feColorMatrix in="blur1" type="matrix" values="1 0 0 0 1  0 0.72 0 0 0.52  0 0 0.12 0 0.08  0 0 0 0.85 0" result="goldBlur"/>
+      <feMerge>
+        <feMergeNode in="goldBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="starFlare" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="barShadow" x="-50%" y="-20%" width="200%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#00101A" flood-opacity="0.5"/>
+    </filter>
+    <filter id="softTinyGlow" x="-200%" y="-200%" width="500%" height="500%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="whiteTextShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="2.5" flood-color="#000815" flood-opacity="0.35"/>
+    </filter>
+    <filter id="blueLineGlow" x="-50%" y="-300%" width="200%" height="700%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  
+  <g id="logo" shape-rendering="geometricPrecision">
+    <g id="top-golden-star" filter="url(#goldGlow)">
+      <path d="M775 63
+C786 111 802 123 852 132
+C804 141 787 154 775 203
+C763 154 746 141 698 132
+C748 123 764 111 775 63Z" fill="url(#goldStar)"/>
+      <path d="M775 82
+C782 117 794 126 828 132
+C794 138 782 147 775 184
+C768 147 756 138 722 132
+C756 126 768 117 775 82Z" fill="url(#goldStarCore)" opacity="0.92"/>
+      <circle cx="775" cy="132" r="5" fill="#FFFFFF" opacity="0.95"/>
+      <path d="M775 92 L775 172 M726 132 L824 132" stroke="#FFF0A0" stroke-width="2.2" stroke-linecap="round" opacity="0.8" filter="url(#starFlare)"/>
+      <path d="M750 109 L801 155 M801 109 L750 155" stroke="#FFE37D" stroke-width="1.2" stroke-linecap="round" opacity="0.38"/>
+    </g>
+    <g id="waveform-bars">
+      <circle cx="457" cy="439" r="9" fill="url(#whiteDot)" filter="url(#softTinyGlow)"/>
+      <rect x="494" y="424" width="16" height="43" rx="9" fill="url(#barWhite)" filter="url(#barShadow)"/>
+      <rect x="543" y="407" width="17" height="87" rx="9" fill="url(#barWhite)" filter="url(#barShadow)"/>
+      <rect x="591" y="378" width="17" height="130" rx="9" fill="url(#barWhiteBlue)" filter="url(#barShadow)"/>
+      <rect x="646" y="339" width="18" height="181" rx="9" fill="url(#barBlue)" filter="url(#barShadow)"/>
+      <rect x="698" y="287" width="18" height="247" rx="9" fill="url(#barBlue)" filter="url(#barShadow)"/>
+      <rect x="766" y="218" width="18" height="340" rx="9" fill="url(#centerBlue)" filter="url(#barShadow)"/>
+      <rect x="812" y="285" width="18" height="241" rx="9" fill="url(#barWhiteBlueSoft)" filter="url(#barShadow)"/>
+      <rect x="865" y="334" width="18" height="164" rx="9" fill="url(#barWhiteBlueSoft)" filter="url(#barShadow)"/>
+      <rect x="920" y="367" width="18" height="129" rx="9" fill="url(#barWhiteBlueSoft)" filter="url(#barShadow)"/>
+      <rect x="974" y="392" width="17" height="82" rx="9" fill="url(#barWhite)" filter="url(#barShadow)"/>
+      <rect x="1021" y="417" width="16" height="40" rx="9" fill="url(#barWhite)" filter="url(#barShadow)"/>
+      <circle cx="1064" cy="439" r="9" fill="url(#whiteDot)" filter="url(#softTinyGlow)"/>
+    </g>
+    <g id="brand-text" filter="url(#whiteTextShadow)">
+      <path d="M468.674 745.934 C498.245 745.934 516.292 731.677 516.292 708.551 C516.292 690.504 504.948 679.959 479.321 674.545 L467.797 672.045 C453.050 668.822 447.095 664.723 447.095 657.298 C447.095 648.532 455.706 642.396 467.952 642.396 C480.842 642.396 489.299 649.409 490.201 660.778 L513.404 660.778 C512.682 636.595 495.512 622.029 467.874 622.029 C440.572 622.029 422.267 636.673 422.267 658.509 C422.267 675.680 433.792 686.714 457.562 691.870 L470.221 694.603 C485.431 697.903 491.722 702.415 491.722 710.149 C491.722 719.508 482.621 725.541 468.854 725.541 C453.463 725.541 444.181 717.806 443.872 704.606 L419.947 704.606 C419.947 730.697 437.917 745.934 468.674 745.934 Z M530.317 777.670 L554.087 777.670 L554.087 731.264 L554.319 731.264 C559.243 740.855 567.854 745.779 579.069 745.779 C601.292 745.779 615.885 728.041 615.885 701.384 C615.885 675.267 600.983 657.143 579.224 657.143 C568.189 657.143 559.243 661.577 554.010 670.446 L553.752 670.446 L553.752 658.922 L530.317 658.922 L530.317 777.670 Z M572.933 726.443 C560.945 726.443 552.953 716.595 552.953 701.384 C552.953 686.224 560.945 676.324 572.933 676.324 C584.457 676.324 591.960 685.425 591.960 701.384 C591.960 717.342 584.457 726.443 572.933 726.443 Z M654.943 745.444 C668.014 745.444 675.336 740.288 679.848 731.986 L680.183 731.986 L680.183 744.000 L703.386 744.000 L703.386 686.302 C703.386 668.100 690.006 657.143 666.725 657.143 C643.342 657.143 629.497 668.255 628.440 685.837 L650.767 685.837 C651.334 679.315 657.135 674.803 666.003 674.803 C674.692 674.803 679.925 679.134 679.925 685.425 L679.925 685.992 C679.925 691.458 674.460 692.205 658.913 693.727 C641.176 695.325 625.707 700.816 625.707 719.998 C625.707 736.987 637.953 745.444 654.943 745.444 Z M661.569 728.944 C653.577 728.944 648.421 725.386 648.421 719.353 C648.421 712.573 654.866 709.427 663.013 708.216 C670.670 707.030 677.347 705.895 680.080 704.348 L680.080 712.908 C680.080 722.086 672.990 728.944 661.569 728.944 Z M720.131 744.000 L743.901 744.000 L743.901 697.903 C743.901 685.116 751.069 678.335 760.814 678.335 C764.836 678.335 769.270 678.670 771.049 678.748 L771.049 658.509 C769.115 658.432 766.769 658.355 764.037 658.355 C752.847 658.355 746.402 663.202 743.257 673.411 L743.025 673.411 L743.025 658.922 L720.131 658.922 L720.131 744.000 Z M781.684 744.000 L805.454 744.000 L805.454 717.007 L812.312 709.427 L837.346 744.000 L865.163 744.000 L830.101 695.815 L863.385 658.922 L835.515 658.922 L805.686 691.458 L805.454 691.458 L805.454 623.962 L781.684 623.962 L781.684 744.000 Z M896.252 623.962 L872.482 623.962 L872.482 744.000 L896.252 744.000 L896.252 623.962 Z M913.007 744.000 L936.777 744.000 L936.777 658.922 L913.007 658.922 L913.007 744.000 Z M924.841 648.197 C932.678 648.197 938.376 642.809 938.376 635.564 C938.376 628.294 932.678 622.905 924.841 622.905 C917.029 622.905 911.305 628.294 911.305 635.564 C911.305 642.809 917.029 648.197 924.841 648.197 Z M977.302 696.717 C977.302 683.491 984.160 677.613 993.983 677.613 C1003.883 677.613 1009.606 683.646 1009.606 695.093 L1009.606 744.000 L1033.299 744.000 L1033.299 690.736 C1033.299 669.234 1021.620 657.143 1003.496 657.143 C991.250 657.143 982.613 662.634 976.890 672.302 L976.890 658.922 L953.532 658.922 L953.532 744.000 L977.302 744.000 L977.302 696.717 Z M1088.958 745.934 C1109.583 745.934 1126.031 734.177 1129.176 717.239 L1107.494 717.239 C1105.329 723.865 1098.961 728.119 1089.679 728.119 C1077.201 728.119 1069.957 719.998 1069.544 707.416 L1130.053 707.416 L1130.053 701.048 C1130.053 675.112 1113.218 656.988 1088.158 656.988 C1063.744 656.988 1046.419 675.602 1046.419 701.538 C1046.419 727.397 1063.176 745.934 1088.958 745.934 Z M1069.699 692.283 C1070.988 681.635 1078.001 675.035 1088.648 675.035 C1099.347 675.035 1106.437 681.635 1107.649 692.283 L1069.699 692.283 Z" fill="#FFFFFF"/>
+    </g>
+    <g id="ai-mark">
+      <line x1="420" y1="838" x2="657" y2="838" stroke="url(#textBlue)" stroke-width="2.5" stroke-linecap="round" filter="url(#blueLineGlow)"/>
+      <line x1="893" y1="838" x2="1130" y2="838" stroke="url(#textBlue)" stroke-width="2.5" stroke-linecap="round" filter="url(#blueLineGlow)"/>
+      <path d="M734.682 867.000 L747.432 867.000 L752.909 851.001 L778.885 851.001 L784.232 867.000 L797.299 867.000 L773.494 800.070 L758.573 800.070 L734.682 867.000 Z M756.244 841.254 L759.479 831.824 C761.491 825.672 763.518 819.246 766.034 810.808 C768.549 819.246 770.519 825.672 772.502 831.824 L775.650 841.254 L756.244 841.254 Z M815.318 800.070 L803.459 800.070 L803.459 867.000 L815.318 867.000 L815.318 800.070 Z" fill="url(#textBlue)" filter="url(#blueLineGlow)"/>
+    </g>
+  </g>
+</svg>
