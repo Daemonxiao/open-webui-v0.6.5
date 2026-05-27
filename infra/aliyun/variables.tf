@@ -71,7 +71,7 @@ variable "image_id" {
 }
 
 variable "instance_type" {
-  description = "Optional ECS instance type. Leave empty to select an available 2C4G type in the selected zone."
+  description = "Optional ECS instance type. Leave empty to select an available type using ecs_cpu_core_count and ecs_memory_size."
   type        = string
   default     = ""
 }
@@ -79,13 +79,13 @@ variable "instance_type" {
 variable "ecs_cpu_core_count" {
   description = "CPU cores used when instance_type is not set."
   type        = number
-  default     = 2
+  default     = 8
 }
 
 variable "ecs_memory_size" {
   description = "Memory size in GiB used when instance_type is not set."
   type        = number
-  default     = 4
+  default     = 16
 }
 
 variable "system_disk_category" {

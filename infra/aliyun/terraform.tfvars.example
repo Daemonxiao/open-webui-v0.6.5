@@ -6,8 +6,11 @@ app_ingress_cidr_blocks = ["0.0.0.0/0"]
 new_api_port                = 3001
 new_api_ingress_cidr_blocks = ["0.0.0.0/0"]
 
-# Leave empty to auto-select a 2C4G type in the selected zone.
+# Leave instance_type empty to auto-select an available 8C16G type in the selected zone.
+# To pin an exact ECS class, set instance_type, for example "ecs.u1-c1m2.2xlarge".
 instance_type = ""
+ecs_cpu_core_count = 8
+ecs_memory_size    = 16
 
 # Optional: set this if you want a specific zone, for example "cn-beijing-k".
 zone_id = ""

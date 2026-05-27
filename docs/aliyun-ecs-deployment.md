@@ -73,6 +73,8 @@ Environment variables:
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
 - `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
+- `ECS_CPU_CORE_COUNT=8`
+- `ECS_MEMORY_SIZE=16`
 
 ## Provisioning Order
 
@@ -136,6 +138,15 @@ The Open WebUI and New API databases are intentionally separate even though they
 Redis is not created by default. The current deployment runs a single Open WebUI container on one ECS instance, and this version of Open WebUI treats `REDIS_URL` and `WEBSOCKET_MANAGER` as optional. Add Redis later only if you deploy multiple Open WebUI instances or need a shared websocket/config state across replicas.
 
 If Redis is added later, set `redis_url` and `websocket_manager = "redis"` in Terraform variables and rerun infra + deploy.
+
+## ECS Sizing
+
+The default Alibaba Cloud infra workflow now provisions a single 8C16G ECS instance by passing:
+
+- `ecs_cpu_core_count=8`
+- `ecs_memory_size=16`
+
+Leave `instance_type` empty to let Terraform choose the lowest-priced available instance class in the selected zone that matches 8C16G. To downgrade later, set the GitHub Environment variables `ECS_CPU_CORE_COUNT=4` and `ECS_MEMORY_SIZE=8`, run the `Alibaba Cloud Infra` workflow with `stack=aliyun` and `apply=false`, inspect the plan, then rerun with `apply=true` during a maintenance window.
 
 ## Local Terraform
 

@@ -28,6 +28,8 @@ jobs:
     env:
       ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
       APP_PORT: ${{ vars.APP_PORT || '3000' }}
+      ECS_CPU_CORE_COUNT: ${{ vars.ECS_CPU_CORE_COUNT || '8' }}
+      ECS_MEMORY_SIZE: ${{ vars.ECS_MEMORY_SIZE || '16' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
@@ -121,6 +123,8 @@ jobs:
           terraform -chdir=infra/aliyun plan \
             -var "region=$ALIYUN_REGION" \
             -var "app_port=$APP_PORT" \
+            -var "ecs_cpu_core_count=$ECS_CPU_CORE_COUNT" \
+            -var "ecs_memory_size=$ECS_MEMORY_SIZE" \
             -out=tfplan
 
       - name: App infra apply
