@@ -29,7 +29,7 @@ wait_for_file() {
 
 install_container_runtime() {
   if command -v docker >/dev/null 2>&1; then
-    start_container_service || true
+    start_container_service
   else
     if command -v dnf >/dev/null 2>&1; then
       dnf install -y docker curl util-linux e2fsprogs
@@ -42,16 +42,37 @@ install_container_runtime() {
       echo "No supported package manager found for Docker installation." >&2
       return 1
     fi
-    start_container_service || true
+    start_container_service
   fi
 
   docker version >/dev/null
 }
 
+is_podman_docker() {
+  docker version 2>&1 | grep -qi 'podman'
+}
+
+enable_systemd_unit_if_exists() {
+  local unit="$1"
+
+  if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | awk '{ print $1 }' | grep -Fxq "$unit"; then
+    systemctl enable --now "$unit" >/dev/null 2>&1
+    return 0
+  fi
+
+  return 1
+}
+
 start_container_service() {
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl enable --now docker >/dev/null 2>&1 && return 0
-    systemctl enable --now podman.socket >/dev/null 2>&1 && return 0
+    if enable_systemd_unit_if_exists docker.service; then
+      return 0
+    fi
+
+    if enable_systemd_unit_if_exists podman.socket; then
+      enable_systemd_unit_if_exists podman-restart.service || true
+      return 0
+    fi
   fi
 
   if command -v service >/dev/null 2>&1; then
@@ -59,6 +80,19 @@ start_container_service() {
   fi
 
   return 1
+}
+
+ensure_container_restart_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if is_podman_docker; then
+    enable_systemd_unit_if_exists podman.socket || true
+    enable_systemd_unit_if_exists podman-restart.service || true
+  else
+    enable_systemd_unit_if_exists docker.service || true
+  fi
 }
 
 find_data_device() {
@@ -141,6 +175,7 @@ deploy_open_webui() {
     --env-file "$APP_DIR/.env" \
     -v "$DATA_DIR:/app/backend/data" \
     "$OPEN_WEBUI_IMAGE"
+  ensure_container_restart_service
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
@@ -173,6 +208,7 @@ deploy_new_api() {
     -v "$APP_DIR/new-api-data:/data" \
     -v "$APP_DIR/new-api-logs:/app/logs" \
     "$NEW_API_IMAGE"
+  ensure_container_restart_service
 
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${NEW_API_PORT:-3001}/api/status" >/dev/null; then
