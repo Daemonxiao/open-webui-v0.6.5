@@ -108,6 +108,25 @@
 
 	const BREAKPOINT = 768;
 
+	const getThemeMode = (themeValue) => {
+		if (themeValue?.includes('dark')) {
+			return 'dark';
+		}
+
+		if (
+			themeValue === 'system' &&
+			typeof window !== 'undefined' &&
+			window.matchMedia('(prefers-color-scheme: dark)').matches
+		) {
+			return 'dark';
+		}
+
+		return 'light';
+	};
+
+	const getThemedFavicon = (themeValue) =>
+		`${WEBUI_BASE_URL}/static/favicon-${getThemeMode(themeValue)}.png`;
+
 	const setupSocket = async (enableWebsocket) => {
 		const _socket = io(`${WEBUI_BASE_URL}` || undefined, {
 			reconnection: true,
@@ -472,7 +491,7 @@
 				if ($settings?.notificationEnabled ?? false) {
 					new Notification(`${data.title} • ${$WEBUI_NAME}`, {
 						body: timeStr,
-						icon: `${WEBUI_BASE_URL}/static/favicon.png`
+						icon: getThemedFavicon($theme)
 					});
 				}
 			}
@@ -603,7 +622,7 @@
 						if ($settings?.notificationEnabled ?? false) {
 							new Notification(`${displayTitle} • ${$WEBUI_NAME}`, {
 								body: content,
-								icon: `${WEBUI_BASE_URL}/static/favicon.png`
+								icon: getThemedFavicon($theme)
 							});
 						}
 					}
@@ -1103,7 +1122,7 @@
 
 <svelte:head>
 	<title>{$WEBUI_NAME}</title>
-	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
+	<link crossorigin="anonymous" rel="icon" href={getThemedFavicon($theme)} />
 
 	<meta name="apple-mobile-web-app-title" content={$WEBUI_NAME} />
 	<meta name="description" content={$WEBUI_NAME} />
@@ -1136,15 +1155,4 @@
 	{/if}
 {/if}
 
-<Toaster
-	theme={$theme.includes('dark')
-		? 'dark'
-		: $theme === 'system'
-			? window.matchMedia('(prefers-color-scheme: dark)').matches
-				? 'dark'
-				: 'light'
-			: 'light'}
-	richColors
-	position="top-right"
-	closeButton
-/>
+<Toaster theme={getThemeMode($theme)} richColors position="top-right" closeButton />

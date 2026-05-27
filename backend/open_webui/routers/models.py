@@ -466,6 +466,7 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user), db: AsyncSes
 async def get_model_profile_image(
     request: Request,
     id: str,
+    theme: str = 'light',
     user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
@@ -526,10 +527,8 @@ async def get_model_profile_image(
                     status_code=status.HTTP_302_FOUND,
                 )
 
-    return RedirectResponse(
-        url='/static/favicon.png',
-        status_code=status.HTTP_302_FOUND,
-    )
+    fallback_logo = '/static/favicon-dark.png' if theme == 'dark' else '/static/favicon-light.png'
+    return RedirectResponse(url=fallback_logo, status_code=status.HTTP_302_FOUND)
 
 
 ############################

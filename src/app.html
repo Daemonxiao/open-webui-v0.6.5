@@ -2,7 +2,14 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<link rel="icon" type="image/png" href="/static/favicon.png" crossorigin="use-credentials" />
+		<link
+			rel="icon"
+			type="image/png"
+			href="/static/favicon-light.png"
+			data-light-href="/static/favicon-light.png"
+			data-dark-href="/static/favicon-dark.png"
+			crossorigin="use-credentials"
+		/>
 		<link
 			rel="icon"
 			type="image/png"
@@ -13,10 +20,18 @@
 		<link
 			rel="icon"
 			type="image/svg+xml"
-			href="/static/favicon.svg"
+			href="/static/favicon-light.svg"
+			data-light-href="/static/favicon-light.svg"
+			data-dark-href="/static/favicon-dark.svg"
 			crossorigin="use-credentials"
 		/>
-		<link rel="shortcut icon" href="/static/favicon.ico" crossorigin="use-credentials" />
+		<link
+			rel="shortcut icon"
+			href="/static/favicon-light.ico"
+			data-light-href="/static/favicon-light.ico"
+			data-dark-href="/static/favicon-dark.ico"
+			crossorigin="use-credentials"
+		/>
 		<link
 			rel="apple-touch-icon"
 			sizes="180x180"
@@ -71,9 +86,23 @@
 					metaThemeColorTag.setAttribute('content', '#171717');
 				}
 
-				const preloadHref = document.documentElement.classList.contains('dark')
-					? '/static/splash-dark.png'
-					: '/static/splash.png';
+				const getThemedAsset = (name) =>
+					document.documentElement.classList.contains('dark')
+						? `/static/${name}-dark.png`
+						: `/static/${name}-light.png`;
+				const updateThemedIcons = () => {
+					document.querySelectorAll('[data-light-href][data-dark-href]').forEach((element) => {
+						element.setAttribute(
+							'href',
+							document.documentElement.classList.contains('dark')
+								? element.dataset.darkHref
+								: element.dataset.lightHref
+						);
+					});
+				};
+				updateThemedIcons();
+
+				const preloadHref = getThemedAsset('splash');
 				const preload = document.createElement('link');
 				preload.rel = 'preload';
 				preload.as = 'image';
@@ -92,6 +121,7 @@
 							document.documentElement.classList.remove('dark');
 							metaThemeColorTag.setAttribute('content', '#ffffff');
 						}
+						updateThemedIcons();
 					}
 				});
 				const isDarkMode = document.documentElement.classList.contains('dark');
@@ -102,7 +132,7 @@
 					'position: absolute; width: auto; height: 6rem; top: 44%; left: 50%; transform: translateX(-50%); display:block;';
 				logo.loading = 'eager';
 				logo.fetchPriority = 'high';
-				logo.src = isDarkMode ? '/static/splash-dark.png' : '/static/splash.png';
+				logo.src = isDarkMode ? '/static/splash-dark.png' : '/static/splash-light.png';
 
 				document.addEventListener('DOMContentLoaded', function () {
 					const splash = document.getElementById('splash-screen');
@@ -150,7 +180,7 @@
 				<img
 					id="logo-her"
 					style="width: auto; height: 13rem"
-					src="/static/splash.png"
+					src="/static/splash-light.png"
 					loading="eager"
 					fetchpriority="high"
 					class="animate-pulse-fast"

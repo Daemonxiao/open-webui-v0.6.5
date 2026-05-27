@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { WEBUI_BASE_URL } from '$lib/constants';
 	import { settings, playingNotificationSound, isLastActiveTab } from '$lib/stores';
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
 
 	import { createEventDispatcher, onMount } from 'svelte';
+	import ThemeLogo from '$lib/components/common/ThemeLogo.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 
 	const dispatch = createEventDispatcher();
@@ -109,7 +109,7 @@
 	</button>
 
 	<div class="shrink-0 self-top -translate-y-0.5">
-		<img src="{WEBUI_BASE_URL}/static/favicon.png" alt="favicon" class="size-6 rounded-full" />
+		<ThemeLogo className="size-6 rounded-full" alt="favicon" />
 	</div>
 
 	<div>

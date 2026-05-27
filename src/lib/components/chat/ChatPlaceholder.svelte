@@ -3,7 +3,7 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 
-	import { config, user, models as _models, temporaryChatEnabled } from '$lib/stores';
+	import { config, user, models as _models, temporaryChatEnabled, theme } from '$lib/stores';
 	import { onMount, getContext } from 'svelte';
 
 	import { blur, fade } from 'svelte/transition';
@@ -29,6 +29,7 @@
 	}
 
 	$: models = modelIds.map((id) => $_models.find((m) => m.id === id));
+	$: modelProfileImageTheme = $theme.includes('dark') ? 'dark' : 'light';
 
 	onMount(() => {
 		mounted = true;
@@ -56,12 +57,12 @@
 							placement="right"
 						>
 							<img
-								src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
+								src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}&theme=${modelProfileImageTheme}`}
 								class=" size-[2.7rem] rounded-full border-[1px] border-gray-100 dark:border-none"
 								alt="logo"
 								draggable="false"
 								on:error={(e) => {
-									e.currentTarget.src = '/favicon.png';
+									e.currentTarget.src = `/static/favicon-${modelProfileImageTheme}.png`;
 								}}
 							/>
 						</Tooltip>
