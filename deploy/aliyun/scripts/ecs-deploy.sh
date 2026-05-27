@@ -11,6 +11,7 @@ HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
 HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
 COMPOSE_PULL_TIMEOUT_SECONDS="${COMPOSE_PULL_TIMEOUT_SECONDS:-900}"
 COMPOSE_UP_TIMEOUT_SECONDS="${COMPOSE_UP_TIMEOUT_SECONDS:-300}"
+PRUNE_UNUSED_IMAGES_AFTER_DEPLOY="${PRUNE_UNUSED_IMAGES_AFTER_DEPLOY:-true}"
 
 wait_for_file() {
   local path="$1"
@@ -156,6 +157,14 @@ ensure_app_network() {
   docker network inspect open-webui >/dev/null 2>&1 || docker network create open-webui
 }
 
+prune_unused_images() {
+  if [ "$PRUNE_UNUSED_IMAGES_AFTER_DEPLOY" != "true" ]; then
+    return 0
+  fi
+
+  docker image prune -af || true
+}
+
 deploy_open_webui() {
   cd "$APP_DIR"
   set -a
@@ -180,6 +189,7 @@ deploy_open_webui() {
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
       docker ps --filter "name=${CONTAINER_NAME}"
+      prune_unused_images
       return 0
     fi
     sleep "$HEALTH_CHECK_DELAY_SECONDS"
@@ -213,6 +223,7 @@ deploy_new_api() {
   for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
     if curl --silent --fail "http://127.0.0.1:${NEW_API_PORT:-3001}/api/status" >/dev/null; then
       docker ps --filter "name=${NEW_API_CONTAINER_NAME}"
+      prune_unused_images
       return 0
     fi
     sleep "$HEALTH_CHECK_DELAY_SECONDS"
