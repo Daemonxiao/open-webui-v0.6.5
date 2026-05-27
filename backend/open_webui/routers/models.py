@@ -74,6 +74,10 @@ def _safe_static_redirect_path(url: str) -> Optional[str]:
     return normalized
 
 
+def _themed_default_model_logo(theme: str) -> str:
+    return '/static/favicon-dark.png' if theme == 'dark' else '/static/favicon-light.png'
+
+
 def is_valid_model_id(model_id: str) -> bool:
     return model_id and len(model_id) <= 256
 
@@ -522,12 +526,18 @@ async def get_model_profile_image(
         else:
             safe_static = _safe_static_redirect_path(profile_image_url)
             if safe_static:
+                if safe_static == '/static/favicon.png':
+                    return RedirectResponse(
+                        url=_themed_default_model_logo(theme),
+                        status_code=status.HTTP_302_FOUND,
+                    )
+
                 return RedirectResponse(
                     url=safe_static,
                     status_code=status.HTTP_302_FOUND,
                 )
 
-    fallback_logo = '/static/favicon-dark.png' if theme == 'dark' else '/static/favicon-light.png'
+    fallback_logo = _themed_default_model_logo(theme)
     return RedirectResponse(url=fallback_logo, status_code=status.HTTP_302_FOUND)
 
 
