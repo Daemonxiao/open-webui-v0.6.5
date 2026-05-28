@@ -594,6 +594,63 @@ def serialize_output(output: list) -> str:
     return '\n'.join(parts).strip()
 
 
+def merge_response_output_item(current_item: dict, final_item: dict) -> dict:
+    """
+    Merge a Responses API final item into the streamed item without allowing a
+    shorter final text payload to discard already streamed content.
+    """
+    if not isinstance(current_item, dict) or not isinstance(final_item, dict):
+        return final_item
+
+    if current_item.get('type') != 'message' or final_item.get('type') != 'message':
+        return final_item
+
+    merged_item = final_item.copy()
+    current_content = current_item.get('content', [])
+    final_content = final_item.get('content', [])
+
+    if not isinstance(current_content, list) or not isinstance(final_content, list):
+        return merged_item
+
+    merged_content = list(final_content)
+    for idx, current_part in enumerate(current_content):
+        if not isinstance(current_part, dict):
+            continue
+
+        if idx >= len(merged_content) or not isinstance(merged_content[idx], dict):
+            merged_content.append(current_part)
+            continue
+
+        final_part = merged_content[idx].copy()
+        current_text = current_part.get('text')
+        final_text = final_part.get('text')
+        if (
+            isinstance(current_text, str)
+            and isinstance(final_text, str)
+            and len(final_text) < len(current_text)
+            and final_text in current_text
+        ):
+            final_part['text'] = current_text
+
+        merged_content[idx] = final_part
+
+    merged_item['content'] = merged_content
+    return merged_item
+
+
+def prefer_richer_response_output(current_output: list, final_output: list | None) -> list:
+    if final_output is None:
+        return current_output
+
+    current_text = serialize_output(current_output)
+    final_text = serialize_output(final_output)
+
+    if current_text and len(final_text) < len(current_text) and final_text in current_text:
+        return current_output
+
+    return final_output
+
+
 def deep_merge(target, source):
     """
     Merge source into target recursively (returning new structure).
@@ -889,7 +946,16 @@ def handle_responses_streaming_event(
                                 if len(item['content']) > content_index:
                                     part = item['content'][content_index].copy()
                                     item['content'][content_index] = part
-                                    part[key] = final_value
+                                    current_value = part.get(key)
+                                    if (
+                                        isinstance(current_value, str)
+                                        and isinstance(final_value, str)
+                                        and len(final_value) < len(current_value)
+                                        and final_value in current_value
+                                    ):
+                                        part[key] = current_value
+                                    else:
+                                        part[key] = final_value
                         elif item_type == 'reasoning':
                             item['status'] = 'completed'
                         else:
@@ -906,7 +972,7 @@ def handle_responses_streaming_event(
 
         new_output = list(current_output)
         if item and 0 <= output_index < len(current_output):
-            new_output[output_index] = item
+            new_output[output_index] = merge_response_output_item(current_output[output_index], item)
         elif item:
             new_output.append(item)
         return new_output, {}
@@ -916,7 +982,7 @@ def handle_responses_streaming_event(
         response_data = data.get('response', {})
         final_output = response_data.get('output')
 
-        new_output = final_output if final_output is not None else current_output
+        new_output = prefer_richer_response_output(current_output, final_output)
 
         # Ensure reasoning items are marked as completed in the final output
         if new_output:
