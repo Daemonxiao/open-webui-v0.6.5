@@ -2,7 +2,7 @@
 	import { getContext } from 'svelte';
 	import { goto } from '$app/navigation';
 
-	import { settings, showSettings, terminalServers, selectedTerminalId, user } from '$lib/stores';
+	import { settings, terminalServers, selectedTerminalId, user } from '$lib/stores';
 	import { getToolServersData } from '$lib/apis';
 
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
@@ -113,33 +113,12 @@
 			>
 				<!-- Direct terminals (gated by permission) -->
 				{#if directTerminals.length > 0 && ($user?.role === 'admin' || ($user?.permissions?.features?.direct_tool_servers ?? true))}
-					<div class="flex items-center justify-between px-3 py-1">
+					<div class="flex items-center px-3 py-1">
 						<span
 							class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider"
 						>
 							{$i18n.t('Direct')}
 						</span>
-						<Tooltip content={$i18n.t('Add Terminal')} placement="top">
-							<button
-								type="button"
-								class="p-0.5 rounded-md text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition"
-								on:click|stopPropagation={() => {
-									show = false;
-									showSettings.set('tools');
-								}}
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 20 20"
-									fill="currentColor"
-									class="size-3.5"
-								>
-									<path
-										d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z"
-									/>
-								</svg>
-							</button>
-						</Tooltip>
 					</div>
 
 					{#each directTerminals as terminal}

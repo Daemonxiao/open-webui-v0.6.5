@@ -1,5 +1,4 @@
 <script lang="ts">
-	import DOMPurify from 'dompurify';
 	import { v4 as uuidv4 } from 'uuid';
 
 	import { getBackendConfig, getWebhookUrl, updateWebhookUrl } from '$lib/apis';
@@ -16,7 +15,6 @@
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import { WEBUI_BUILD_HASH, WEBUI_VERSION } from '$lib/constants';
 	import { banners as _banners, config } from '$lib/stores';
 	import type { Banner } from '$lib/types';
 	import { onMount, getContext } from 'svelte';
@@ -120,100 +118,6 @@
 					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('General')}</div>
 
 					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-					<div class="mb-2.5">
-						<div class=" mb-1 text-xs font-medium flex space-x-2 items-center">
-							<div>
-								{$i18n.t('Version')}
-							</div>
-						</div>
-						<div class="flex w-full justify-between items-center">
-							<div class="flex flex-col text-xs text-gray-700 dark:text-gray-200">
-								<div class="flex gap-1">
-									<Tooltip content={WEBUI_BUILD_HASH}>
-										v{WEBUI_VERSION}
-									</Tooltip>
-
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="mb-2.5">
-						<div class="flex w-full justify-between items-center">
-							<div class="text-xs pr-2">
-								<div class="">
-									{$i18n.t('Help')}
-								</div>
-									<div class=" text-xs text-gray-500">
-										{$i18n.t('View product documentation and administrator configuration references.')}
-									</div>
-							</div>
-
-							<a
-								class="flex-shrink-0 text-xs font-medium underline"
-								href="https://docs.openwebui.com/"
-								target="_blank"
-							>
-								{$i18n.t('Documentation')}
-							</a>
-						</div>
-
-					</div>
-
-					<div class="mb-2.5">
-						<div class="flex w-full justify-between items-center">
-							<div class="text-xs pr-2">
-								<div class="">
-									{$i18n.t('License')}
-								</div>
-
-								{#if $config?.license_metadata}
-									<a
-										href="https://docs.openwebui.com/enterprise"
-										target="_blank"
-										class="text-gray-500 mt-0.5"
-									>
-										<span class=" capitalize text-black dark:text-white"
-											>{$config?.license_metadata?.type}
-											license</span
-										>
-										registered to
-										<span class=" capitalize text-black dark:text-white"
-											>{$config?.license_metadata?.organization_name}</span
-										>
-										for
-										<span class=" font-medium text-black dark:text-white"
-											>{$config?.license_metadata?.seats ?? 'Unlimited'} users.</span
-										>
-									</a>
-									{#if $config?.license_metadata?.html}
-										<div class="mt-0.5">
-											{@html DOMPurify.sanitize($config?.license_metadata?.html)}
-										</div>
-									{/if}
-								{:else}
-									<a
-										class=" text-xs hover:underline"
-										href="https://docs.openwebui.com/enterprise"
-										target="_blank"
-									>
-										<span class="text-gray-500">
-											{$i18n.t(
-												'Upgrade to a licensed plan for enhanced capabilities, including custom theming and branding, and dedicated support.'
-											)}
-										</span>
-									</a>
-								{/if}
-							</div>
-
-							<!-- <button
-								class="flex-shrink-0 text-xs px-3 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-lg font-medium"
-							>
-								{$i18n.t('Activate')}
-							</button> -->
-						</div>
-					</div>
 				</div>
 
 				<div class="mb-3">
