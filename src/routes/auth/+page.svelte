@@ -261,7 +261,7 @@
 													id="name"
 													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
 													autocomplete="name"
-													placeholder={$i18n.t('Enter Your Full Name')}
+													placeholder="输入您的真实姓名"
 													required
 												/>
 											</div>
