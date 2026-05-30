@@ -149,6 +149,7 @@
 	}
 
 	let selectedToolIds = [];
+	let selectedPromptApp: any = null;
 	let selectedFilterIds = [];
 	let pendingOAuthTools = [];
 
@@ -206,6 +207,7 @@
 
 		files = [];
 		selectedToolIds = [];
+		selectedPromptApp = null;
 		selectedFilterIds = [];
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
@@ -241,6 +243,7 @@
 						messageInput?.setText(input.prompt);
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
+						selectedPromptApp = input.selectedPromptApp ?? null;
 						selectedFilterIds = input.selectedFilterIds;
 						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
@@ -808,6 +811,7 @@
 
 				files = [];
 				selectedToolIds = [];
+				selectedPromptApp = null;
 				selectedFilterIds = [];
 				webSearchEnabled = false;
 				imageGenerationEnabled = false;
@@ -820,6 +824,7 @@
 						messageInput?.setText(input.prompt);
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
+						selectedPromptApp = input.selectedPromptApp ?? null;
 						selectedFilterIds = input.selectedFilterIds;
 						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
@@ -1903,7 +1908,7 @@
 	// Chat functions
 	//////////////////////////
 
-	const submitPrompt = async (inputContent, inputFiles) => {
+	const submitPrompt = async (inputContent, inputFiles, inputPromptApp = selectedPromptApp) => {
 		const _files = structuredClone(inputFiles);
 
 		chatFiles.push(
@@ -1926,6 +1931,12 @@
 			childrenIds: [],
 			role: 'user',
 			content: inputContent,
+			metadata: inputPromptApp
+				? {
+						prompt_app_id: inputPromptApp.id,
+						prompt_app_name: inputPromptApp.name
+					}
+				: undefined,
 			files: _files.length > 0 ? _files : undefined,
 			timestamp: Math.floor(Date.now() / 1000), // Unix epoch
 			models: selectedModels
@@ -2009,7 +2020,10 @@
 				const _files = structuredClone(files);
 				chatRequestQueues.update((q) => ({
 					...q,
-					[$chatId]: [...(q[$chatId] ?? []), { id: uuidv4(), prompt: userPrompt, files: _files }]
+					[$chatId]: [
+						...(q[$chatId] ?? []),
+						{ id: uuidv4(), prompt: userPrompt, files: _files, promptApp: selectedPromptApp }
+					]
 				}));
 				// Clear input
 				messageInput?.setText('');
@@ -2443,6 +2457,9 @@
 				...(messageIdsMap ? { message_ids: messageIdsMap } : {}),
 				parent_id: userMessage?.parentId ?? null,
 				user_message: userMessage,
+				...(userMessage?.metadata?.prompt_app_id
+					? { prompt_app_id: userMessage.metadata.prompt_app_id }
+					: {}),
 				...(regenerationPrompt ? { regeneration_prompt: regenerationPrompt } : {}),
 				...(continueResponse ? { assistant_message_id: responseMessageId } : {}),
 
@@ -3102,6 +3119,7 @@
 									bind:prompt
 									bind:autoScroll
 									bind:selectedToolIds
+									bind:selectedPromptApp
 									bind:selectedFilterIds
 									bind:imageGenerationEnabled
 									bind:codeInterpreterEnabled
@@ -3128,7 +3146,7 @@
 											}));
 											await stopResponse(false);
 											await tick();
-											await submitPrompt(item.prompt, item.files);
+											await submitPrompt(item.prompt, item.files, item.promptApp);
 										}
 									}}
 									onQueueEdit={(id) => {
@@ -3142,6 +3160,7 @@
 											}));
 											// Set files and restore prompt to input
 											files = item.files;
+											selectedPromptApp = item.promptApp ?? null;
 											messageInput?.setText(item.prompt);
 										}
 									}}
@@ -3183,6 +3202,7 @@
 									bind:prompt
 									bind:autoScroll
 									bind:selectedToolIds
+									bind:selectedPromptApp
 									bind:selectedFilterIds
 									bind:imageGenerationEnabled
 									bind:codeInterpreterEnabled

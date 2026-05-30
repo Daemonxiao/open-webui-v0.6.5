@@ -1,29 +1,25 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import fileSaver from 'file-saver';
-	const { saveAs } = fileSaver;
 
-	import { goto } from '$app/navigation';
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
-	import { WEBUI_NAME, config, user } from '$lib/stores';
+	import { WEBUI_NAME, user } from '$lib/stores';
 
 	import {
 		createNewPrompt,
 		deletePromptById,
+		getPromptById,
 		togglePromptById,
 		getPromptItems,
-		getPromptTags
+		getPromptTags,
+		updatePromptById
 	} from '$lib/apis/prompts';
-	import { capitalizeFirstLetter, slugify, copyToClipboard } from '$lib/utils';
+	import { capitalizeFirstLetter, slugify } from '$lib/utils';
 
 	import PromptMenu from './Prompts/PromptMenu.svelte';
 	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
-	import Clipboard from '../icons/Clipboard.svelte';
-	import Check from '../icons/Check.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Search from '../icons/Search.svelte';
 	import Plus from '../icons/Plus.svelte';
-	import ChevronRight from '../icons/ChevronRight.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import XMark from '../icons/XMark.svelte';
@@ -33,14 +29,14 @@
 	import Badge from '$lib/components/common/Badge.svelte';
 	import Switch from '../common/Switch.svelte';
 	import Pagination from '../common/Pagination.svelte';
+	import Drawer from '../common/Drawer.svelte';
+	import PromptEditor from './Prompts/PromptEditor.svelte';
 
 	let shiftKey = false;
 
 	const i18n = getContext('i18n');
-	let promptsImportInputElement: HTMLInputElement;
 	let loaded = false;
 
-	let importFiles = null;
 	let query = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
@@ -51,11 +47,15 @@
 
 	let showDeleteConfirm = false;
 	let deletePrompt = null;
+	let showCreateDrawer = false;
+	let createPromptSeed = null;
+	let clonePrompt = false;
+	let editPrompt = false;
+	let drawerDisabled = false;
 
 	let tagsContainerElement: HTMLDivElement;
 	let viewOption = '';
 	let selectedTag = '';
-	let copiedId: string | null = null;
 
 	let page = 1;
 
@@ -84,8 +84,8 @@
 				query,
 				viewOption,
 				selectedTag,
-				null,
-				null,
+				'created_at',
+				'desc',
 				page
 			).catch((error) => {
 				toast.error(`${error}`);
@@ -109,51 +109,76 @@
 		}
 	};
 
-	const shareHandler = async (prompt) => {
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/prompts/create`, '_blank');
-		window.addEventListener(
-			'message',
-			(event) => {
-				if (event.origin !== url) return;
-				if (event.data === 'loaded') {
-					tab.postMessage(JSON.stringify(prompt), '*');
-				}
-			},
-			false
-		);
-	};
-
 	const cloneHandler = async (prompt) => {
 		const clonedPrompt = { ...prompt };
 
-		clonedPrompt.title = `${clonedPrompt.title} (Clone)`;
+		clonedPrompt.name = `${clonedPrompt.name} (Clone)`;
 		const baseCommand = clonedPrompt.command.startsWith('/')
 			? clonedPrompt.command.substring(1)
 			: clonedPrompt.command;
 		clonedPrompt.command = slugify(`${baseCommand} clone`);
 
-		sessionStorage.prompt = JSON.stringify(clonedPrompt);
-		goto('/workspace/prompts/create');
+		createPromptSeed = clonedPrompt;
+		clonePrompt = true;
+		editPrompt = false;
+		drawerDisabled = false;
+		showCreateDrawer = true;
 	};
 
-	const exportHandler = async (prompt) => {
-		let blob = new Blob([JSON.stringify([prompt])], {
-			type: 'application/json'
+	const openEditDrawer = async (prompt) => {
+		const fullPrompt = await getPromptById(localStorage.token, prompt.id).catch((error) => {
+			toast.error(`${error}`);
+			return null;
 		});
-		saveAs(blob, `prompt-export-${Date.now()}.json`);
+
+		if (!fullPrompt) return;
+
+		createPromptSeed = {
+			id: fullPrompt.id,
+			name: fullPrompt.name,
+			command: fullPrompt.command,
+			description: fullPrompt.description ?? '',
+			content: fullPrompt.content,
+			version_id: fullPrompt.version_id,
+			tags: fullPrompt.tags ?? [],
+			access_grants: fullPrompt.access_grants ?? []
+		};
+		clonePrompt = false;
+		editPrompt = true;
+		drawerDisabled = !(fullPrompt.write_access ?? false);
+		showCreateDrawer = true;
 	};
 
-	const copyHandler = async (prompt) => {
-		const res = await copyToClipboard(prompt.content);
+	const createPromptHandler = async (_prompt) => {
+		const res = await createNewPrompt(localStorage.token, _prompt).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
 		if (res) {
-			copiedId = prompt.command;
-			setTimeout(() => {
-				copiedId = null;
-			}, 2000);
+			toast.success($i18n.t('Prompt created successfully'));
+			showCreateDrawer = false;
+			createPromptSeed = null;
+			clonePrompt = false;
+			page = 1;
+			await getPromptList();
+		}
+	};
+
+	const updatePromptHandler = async (_prompt) => {
+		const res = await updatePromptById(localStorage.token, _prompt).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (res) {
+			toast.success($i18n.t('Prompt updated successfully'));
+			showCreateDrawer = false;
+			createPromptSeed = null;
+			clonePrompt = false;
+			editPrompt = false;
+			drawerDisabled = false;
+			await getPromptList();
 		}
 	};
 
@@ -175,6 +200,10 @@
 
 	onMount(async () => {
 		viewOption = localStorage?.workspaceViewOption || '';
+		if (viewOption === 'shared') {
+			viewOption = '';
+			localStorage.workspaceViewOption = '';
+		}
 		loaded = true;
 
 		const onKeyDown = (event) => {
@@ -212,14 +241,14 @@
 
 <svelte:head>
 	<title>
-		{$i18n.t('Prompts')} • {$WEBUI_NAME}
+		{$i18n.t('Prompt Apps')} • {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
 {#if loaded}
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}
-		title={$i18n.t('Delete prompt?')}
+		title={$i18n.t('Delete prompt app?')}
 		on:confirm={() => {
 			deleteHandler(deletePrompt);
 		}}
@@ -229,111 +258,43 @@
 		</div>
 	</DeleteConfirmDialog>
 
-	<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
-		<input
-			id="prompts-import-input"
-			bind:this={promptsImportInputElement}
-			bind:files={importFiles}
-			type="file"
-			accept=".json"
-			hidden
-			on:change={() => {
-				console.log(importFiles);
-				if (!importFiles || importFiles.length === 0) return;
-
-				const reader = new FileReader();
-				reader.onload = async (event) => {
-					const savedPrompts = JSON.parse(event.target.result);
-					console.log(savedPrompts);
-
-					try {
-						for (const prompt of savedPrompts) {
-							await createNewPrompt(localStorage.token, {
-								command: prompt.command,
-								name: prompt.name,
-								content: prompt.content
-							}).catch((error) => {
-								toast.error(typeof error === 'string' ? error : JSON.stringify(error));
-								return null;
-							});
-						}
-
-						page = 1;
-						await getPromptList();
-					} finally {
-						importFiles = null;
-						promptsImportInputElement.value = '';
-					}
-				};
-
-				reader.readAsText(importFiles[0]);
-			}}
-		/>
-		<div class="flex justify-between items-center">
-			<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
-				<div>
-					{$i18n.t('Prompts')}
-				</div>
-
-				<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-					{total ?? ''}
-				</div>
-			</div>
-
-			<div class="flex w-full justify-end gap-1.5">
-				{#if $user?.role === 'admin' || $user?.permissions?.workspace?.prompts_import}
-					<button
-						class="flex text-xs items-center space-x-1 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-200 transition"
-						on:click={() => {
-							promptsImportInputElement.click();
-						}}
-					>
-						<div class=" self-center font-medium line-clamp-1">
-							{$i18n.t('Import')}
-						</div>
-					</button>
-				{/if}
-
-				{#if total && ($user?.role === 'admin' || $user?.permissions?.workspace?.prompts_export)}
-					<button
-						class="flex text-xs items-center space-x-1 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-200 transition"
-						on:click={async () => {
-							let blob = new Blob([JSON.stringify(prompts)], {
-								type: 'application/json'
-							});
-							saveAs(blob, `prompts-export-${Date.now()}.json`);
-						}}
-					>
-						<div class=" self-center font-medium line-clamp-1">
-							{$i18n.t('Export')}
-						</div>
-					</button>
-				{/if}
-				<a
-					class=" px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
-					href="/workspace/prompts/create"
-				>
-					<Plus className="size-3" strokeWidth="2.5" />
-
-					<div class=" hidden md:block md:ml-1 text-xs">{$i18n.t('New Prompt')}</div>
-				</a>
-			</div>
+	<Drawer
+		bind:show={showCreateDrawer}
+		side="right"
+		className="w-full max-w-4xl !bg-gray-50 dark:!bg-gray-950"
+		onClose={() => {
+			createPromptSeed = null;
+			clonePrompt = false;
+			editPrompt = false;
+			drawerDisabled = false;
+		}}
+	>
+		<div class="min-h-full px-4 md:px-6">
+			{#key `${editPrompt ? 'edit' : 'create'}-${createPromptSeed?.id ?? createPromptSeed?.command ?? ''}`}
+				<PromptEditor
+					prompt={createPromptSeed}
+					onSubmit={editPrompt ? updatePromptHandler : createPromptHandler}
+					clone={clonePrompt}
+					edit={editPrompt}
+					disabled={drawerDisabled}
+				/>
+			{/key}
 		</div>
-	</div>
+	</Drawer>
 
 	<div
-		class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
+		class="mt-1.5 py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
 	>
-		<div class=" flex w-full space-x-2 py-0.5 px-3.5 pb-2">
-			<div class="flex flex-1">
+		<div class="flex w-full items-center gap-2 py-0.5 px-3.5 pb-2">
+			<div class="flex flex-1 min-w-0">
 				<div class=" self-center ml-1 mr-3">
 					<Search className="size-3.5" />
 				</div>
 				<input
 					class=" w-full text-sm pr-4 py-1 rounded-r-xl outline-hidden bg-transparent"
 					bind:value={query}
-					aria-label={$i18n.t('Search Prompts')}
-					placeholder={$i18n.t('Search Prompts')}
+					aria-label={$i18n.t('Search Prompt Apps')}
+					placeholder={$i18n.t('Search Prompt Apps')}
 				/>
 
 				{#if query}
@@ -350,6 +311,22 @@
 					</div>
 				{/if}
 			</div>
+
+			<button
+				class="shrink-0 px-3 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
+				type="button"
+				on:click={() => {
+					createPromptSeed = null;
+					clonePrompt = false;
+					editPrompt = false;
+					drawerDisabled = false;
+					showCreateDrawer = true;
+				}}
+			>
+				<Plus className="size-3" strokeWidth="2.5" />
+
+				<div class="ml-1 text-xs">{$i18n.t('New Prompt App')}</div>
+			</button>
 		</div>
 
 		<div
@@ -367,6 +344,7 @@
 			>
 				<ViewSelector
 					bind:value={viewOption}
+					includeShared={false}
 					onChange={async (value) => {
 						localStorage.workspaceViewOption = value;
 						page = 1;
@@ -391,24 +369,29 @@
 			<!-- Before they call, I will answer; while they are yet speaking, I will hear. -->
 			<div class="gap-2 grid my-2 px-3 lg:grid-cols-2">
 				{#each prompts as prompt (prompt.id)}
-					<a
+					<div
+						role="button"
+						tabindex="0"
 						class=" flex space-x-4 cursor-pointer text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
-						href={`/workspace/prompts/${prompt.id}`}
+						on:click={() => openEditDrawer(prompt)}
+						on:keydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								openEditDrawer(prompt);
+							}
+						}}
 					>
 						<div class=" flex flex-col flex-1 space-x-4 cursor-pointer w-full pl-1">
 							<div class="flex items-center justify-between w-full mb-0.5">
 								<div class="flex items-center gap-2">
 									<div class="font-medium line-clamp-1 capitalize">{prompt.name}</div>
-									<div class="text-xs overflow-hidden text-ellipsis line-clamp-1 text-gray-500">
-										/{prompt.command}
-									</div>
 								</div>
 								{#if !prompt.write_access}
 									<Badge type="muted" content={$i18n.t('Read Only')} />
 								{/if}
 							</div>
 
-							<div class="flex gap-1 text-xs">
+							<div class="flex gap-1 text-xs text-gray-500">
 								<Tooltip
 									content={prompt?.user?.email ?? $i18n.t('Deleted User')}
 									className="flex shrink-0"
@@ -425,12 +408,16 @@
 
 								<div>·</div>
 
-								{#if prompt.content}
-									<Tooltip content={prompt.content} placement="top">
-										<div class="line-clamp-1">
-											{prompt.content}
+								{#if prompt.description?.trim()}
+									<Tooltip content={prompt.description} placement="top">
+										<div class="line-clamp-1 min-w-0">
+											{prompt.description}
 										</div>
 									</Tooltip>
+								{:else}
+									<div class="line-clamp-1 text-gray-400 dark:text-gray-600">
+										{$i18n.t('No description')}
+									</div>
 								{/if}
 							</div>
 						</div>
@@ -441,7 +428,7 @@
 										class="self-center w-fit text-sm px-2 py-2 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
 										type="button"
 										aria-label={$i18n.t('Delete')}
-										on:click={() => {
+										on:click|stopPropagation={() => {
 											deleteHandler(prompt);
 										}}
 									>
@@ -449,47 +436,25 @@
 									</button>
 								</Tooltip>
 							{:else}
-								<Tooltip content={$i18n.t('Copy Prompt')}>
-									<button
-										class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-										type="button"
-										aria-label={$i18n.t('Copy Prompt')}
-										on:click={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											copyHandler(prompt);
+								<span on:click|stopPropagation>
+									<PromptMenu
+										cloneHandler={() => {
+											cloneHandler(prompt);
 										}}
+										deleteHandler={async () => {
+											deletePrompt = prompt;
+											showDeleteConfirm = true;
+										}}
+										onClose={() => {}}
 									>
-										{#if copiedId === prompt.command}
-											<Check className="size-4" strokeWidth="1.5" />
-										{:else}
-											<Clipboard className="size-4" strokeWidth="1.5" />
-										{/if}
-									</button>
-								</Tooltip>
-								<PromptMenu
-									shareHandler={() => {
-										shareHandler(prompt);
-									}}
-									cloneHandler={() => {
-										cloneHandler(prompt);
-									}}
-									exportHandler={() => {
-										exportHandler(prompt);
-									}}
-									deleteHandler={async () => {
-										deletePrompt = prompt;
-										showDeleteConfirm = true;
-									}}
-									onClose={() => {}}
-								>
-									<button
-										class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-										type="button"
-									>
-										<EllipsisHorizontal className="size-5" />
-									</button>
-								</PromptMenu>
+										<button
+											class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+											type="button"
+										>
+											<EllipsisHorizontal className="size-5" />
+										</button>
+									</PromptMenu>
+								</span>
 
 								<button on:click|stopPropagation|preventDefault>
 									<Tooltip
@@ -505,7 +470,7 @@
 								</button>
 							{/if}
 						</div>
-					</a>
+					</div>
 				{/each}
 			</div>
 
@@ -518,7 +483,7 @@
 			<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
 				<div class="max-w-md text-center">
 					<div class=" text-3xl mb-3">😕</div>
-					<div class=" text-lg font-medium mb-1">{$i18n.t('No prompts found')}</div>
+					<div class=" text-lg font-medium mb-1">{$i18n.t('No prompt apps found')}</div>
 					<div class=" text-gray-500 text-center text-xs">
 						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 					</div>
@@ -526,33 +491,6 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<div class=" my-16">
-			<div class=" text-xl font-medium mb-1 line-clamp-1">
-				{$i18n.t('Made by Open WebUI Community')}
-			</div>
-
-			<a
-				class=" flex cursor-pointer items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-850 w-full mb-2 px-3.5 py-1.5 rounded-xl transition"
-				href="https://openwebui.com/prompts"
-				target="_blank"
-			>
-				<div class=" self-center">
-					<div class=" font-medium line-clamp-1">{$i18n.t('Discover a prompt')}</div>
-					<div class=" text-sm line-clamp-1">
-						{$i18n.t('Discover, download, and explore custom prompts')}
-					</div>
-				</div>
-
-				<div>
-					<div>
-						<ChevronRight />
-					</div>
-				</div>
-			</a>
-		</div>
-	{/if}
 {:else}
 	<div class="w-full h-full flex justify-center items-center">
 		<Spinner className="size-5" />

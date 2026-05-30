@@ -132,6 +132,7 @@
 
 	export let selectedToolIds = [];
 	export let selectedFilterIds = [];
+	export let selectedPromptApp: any = null;
 
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
@@ -141,7 +142,7 @@
 
 	let showTerminalMenu = false;
 
-	export let messageQueue: { id: string; prompt: string; files: any[] }[] = [];
+	export let messageQueue: { id: string; prompt: string; files: any[]; promptApp?: any }[] = [];
 	export let onQueueSendNow: (id: string) => void = () => {};
 	export let onQueueEdit: (id: string) => void = () => {};
 	export let onQueueDelete: (id: string) => void = () => {};
@@ -177,6 +178,7 @@
 			}),
 		selectedToolIds,
 		selectedFilterIds,
+		selectedPromptApp,
 		imageGenerationEnabled,
 		webSearchEnabled,
 		codeInterpreterEnabled
@@ -546,44 +548,6 @@
 			top: element.scrollHeight,
 			behavior: 'smooth'
 		});
-	};
-
-	const screenCaptureHandler = async () => {
-		try {
-			// Request screen media
-			const mediaStream = await navigator.mediaDevices.getDisplayMedia({
-				video: { cursor: 'never' },
-				audio: false
-			});
-			// Once the user selects a screen, temporarily create a video element
-			const video = document.createElement('video');
-			video.srcObject = mediaStream;
-			// Ensure the video loads without affecting user experience or tab switching
-			await video.play();
-			// Set up the canvas to match the video dimensions
-			const canvas = document.createElement('canvas');
-			canvas.width = video.videoWidth;
-			canvas.height = video.videoHeight;
-			// Grab a single frame from the video stream using the canvas
-			const context = canvas.getContext('2d');
-			context.drawImage(video, 0, 0, canvas.width, canvas.height);
-			// Stop all video tracks (stop screen sharing) after capturing the image
-			mediaStream.getTracks().forEach((track) => track.stop());
-
-			// bring back focus to this current tab, so that the user can see the screen capture
-			window.focus();
-
-			// Convert the canvas to a Base64 image URL
-			const imageUrl = canvas.toDataURL('image/png');
-			const blob = await (await fetch(imageUrl)).blob();
-			const file = new File([blob], `screen-capture-${Date.now()}.png`, { type: 'image/png' });
-			inputFilesHandler([file]);
-			// Clean memory: Clear video srcObject
-			video.srcObject = null;
-		} catch (error) {
-			// Handle any errors (e.g., user cancels screen sharing)
-			console.error('Error capturing screen:', error);
-		}
 	};
 
 	const uploadFileHandler = async (file, process = true, itemData = {}) => {
@@ -1410,6 +1374,28 @@
 								</div>
 							{/if}
 
+							{#if selectedPromptApp}
+								<div class="px-2.5 pb-1 flex">
+									<div
+										class="flex items-center gap-1.5 max-w-full text-xs px-2 py-1 rounded-lg bg-gray-50 dark:bg-gray-850 text-gray-700 dark:text-gray-200"
+									>
+										<span class="line-clamp-1"
+											>{$i18n.t('Prompt App')}: {selectedPromptApp.name}</span
+										>
+										<button
+											type="button"
+											class="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10"
+											aria-label={$i18n.t('Remove')}
+											on:click={() => {
+												selectedPromptApp = null;
+											}}
+										>
+											<XMark className="size-3.5" />
+										</button>
+									</div>
+								</div>
+							{/if}
+
 							<div class="px-2.5">
 								<div
 									class="scrollbar-hidden rtl:text-right ltr:text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-1 px-1 resize-none h-fit max-h-96 overflow-auto {files.length ===
@@ -1612,8 +1598,6 @@
 										bind:files
 										selectedModels={atSelectedModel ? [atSelectedModel.id] : selectedModels}
 										{fileUploadCapableModels}
-										{screenCaptureHandler}
-										{inputFilesHandler}
 										uploadFilesHandler={() => {
 											filesInputElement.click();
 										}}
@@ -1652,7 +1636,9 @@
 												console.error('OneDrive Error:', error);
 											}
 										}}
-										{onUpload}
+										onSelectPromptApp={(promptApp: any) => {
+											selectedPromptApp = promptApp;
+										}}
 										onClose={async () => {
 											await tick();
 

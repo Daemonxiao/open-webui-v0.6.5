@@ -3,12 +3,8 @@
 	import {
 		WEBUI_NAME,
 		showSidebar,
-		functions,
 		user,
-		mobile,
-		models,
-		knowledge,
-		tools
+		mobile
 	} from '$lib/stores';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -19,29 +15,26 @@
 
 	let loaded = false;
 
-	onMount(async () => {
-		if ($user?.role !== 'admin') {
-			if ($page.url.pathname.includes('/models') && !$user?.permissions?.workspace?.models) {
-				goto('/');
-			} else if (
-				$page.url.pathname.includes('/knowledge') &&
-				!$user?.permissions?.workspace?.knowledge
-			) {
-				goto('/');
-			} else if (
-				$page.url.pathname.includes('/prompts') &&
-				!$user?.permissions?.workspace?.prompts
-			) {
-				goto('/');
-			} else if ($page.url.pathname.includes('/tools') && !$user?.permissions?.workspace?.tools) {
-				goto('/');
-			} else if ($page.url.pathname.includes('/skills') && !$user?.permissions?.workspace?.skills) {
-				goto('/');
-			}
-		}
+onMount(async () => {
+	const hiddenWorkspaceSections = [
+		'/workspace/models',
+		'/workspace/knowledge',
+		'/workspace/skills',
+		'/workspace/tools'
+	];
 
+	if (hiddenWorkspaceSections.some((section) => $page.url.pathname.includes(section))) {
+		goto($user?.role === 'admin' ? '/workspace/prompts' : '/');
 		loaded = true;
-	});
+		return;
+	}
+
+	if ($user?.role !== 'admin' && $page.url.pathname.includes('/prompts')) {
+		goto('/');
+	}
+
+	loaded = true;
+});
 </script>
 
 <svelte:head>
@@ -84,65 +77,15 @@
 					<div
 						class="flex gap-1 scrollbar-none overflow-x-auto w-fit text-center text-sm font-medium rounded-full bg-transparent py-1 touch-auto pointer-events-auto"
 					>
-						{#if $user?.role === 'admin' || $user?.permissions?.workspace?.models}
-							<a
-								draggable="false"
-								aria-current={$page.url.pathname.includes('/workspace/models') ? 'page' : null}
-								class="min-w-fit p-1.5 {$page.url.pathname.includes('/workspace/models')
-									? ''
-									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
-								href="/workspace/models">{$i18n.t('Models')}</a
-							>
-						{/if}
-
-						{#if $user?.role === 'admin' || $user?.permissions?.workspace?.knowledge}
-							<a
-								draggable="false"
-								aria-current={$page.url.pathname.includes('/workspace/knowledge') ? 'page' : null}
-								class="min-w-fit p-1.5 {$page.url.pathname.includes('/workspace/knowledge')
-									? ''
-									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
-								href="/workspace/knowledge"
-							>
-								{$i18n.t('Knowledge')}
-							</a>
-						{/if}
-
-						{#if $user?.role === 'admin' || $user?.permissions?.workspace?.prompts}
+						{#if $user?.role === 'admin'}
 							<a
 								draggable="false"
 								aria-current={$page.url.pathname.includes('/workspace/prompts') ? 'page' : null}
 								class="min-w-fit p-1.5 {$page.url.pathname.includes('/workspace/prompts')
 									? ''
 									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
-								href="/workspace/prompts">{$i18n.t('Prompts')}</a
+								href="/workspace/prompts">{$i18n.t('Prompt Apps')}</a
 							>
-						{/if}
-
-						{#if $user?.role === 'admin' || $user?.permissions?.workspace?.skills}
-							<a
-								draggable="false"
-								aria-current={$page.url.pathname.includes('/workspace/skills') ? 'page' : null}
-								class="min-w-fit p-1.5 {$page.url.pathname.includes('/workspace/skills')
-									? ''
-									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
-								href="/workspace/skills"
-							>
-								{$i18n.t('Skills')}
-							</a>
-						{/if}
-
-						{#if $user?.role === 'admin' || $user?.permissions?.workspace?.tools}
-							<a
-								draggable="false"
-								aria-current={$page.url.pathname.includes('/workspace/tools') ? 'page' : null}
-								class="min-w-fit p-1.5 {$page.url.pathname.includes('/workspace/tools')
-									? ''
-									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
-								href="/workspace/tools"
-							>
-								{$i18n.t('Tools')}
-							</a>
 						{/if}
 					</div>
 				</div>

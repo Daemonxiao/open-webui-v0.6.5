@@ -2961,6 +2961,14 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     metadata['user_prompt'] = get_last_user_message(form_data['messages'])
     metadata['sources'] = sources[:] if sources else []
 
+    prompt_app_content = getattr(request.state, 'prompt_app_content', None)
+    if prompt_app_content:
+        form_data['messages'] = add_or_update_system_message(
+            prompt_app_content,
+            form_data.get('messages', []),
+            append=True,
+        )
+
     # If context is not empty, insert it into the messages
     if sources and prompt:
         form_data['messages'] = await apply_source_context_to_messages(request, form_data['messages'], sources, prompt)

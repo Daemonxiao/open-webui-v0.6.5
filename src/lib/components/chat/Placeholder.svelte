@@ -48,6 +48,7 @@
 	export let messageInput = null;
 
 	export let selectedToolIds = [];
+	export let selectedPromptApp: any = null;
 	export let selectedFilterIds = [];
 	export let pendingOAuthTools = [];
 
@@ -221,6 +222,7 @@
 					bind:prompt
 					bind:autoScroll
 					bind:selectedToolIds
+					bind:selectedPromptApp
 					bind:selectedFilterIds
 					bind:imageGenerationEnabled
 					bind:codeInterpreterEnabled

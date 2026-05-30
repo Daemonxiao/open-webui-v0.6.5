@@ -1,6 +1,6 @@
 services:
   new-api:
-    image: ${NEW_API_IMAGE:-calciumion/new-api:v1.0.0-rc.8}
+    image: ${NEW_API_IMAGE:-ghcr.io/heibaijian/tokenfun:latest}
     container_name: new-api-hai
     ports:
       - "${NEW_API_PORT:-3001}:3000"

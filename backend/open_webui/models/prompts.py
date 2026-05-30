@@ -29,6 +29,7 @@ class Prompt(Base):
     command = Column(String, unique=True, index=True)
     user_id = Column(String)
     name = Column(Text)
+    description = Column(Text, nullable=True)
     content = Column(Text)
     data = Column(JSON, nullable=True)
     meta = Column(JSON, nullable=True)
@@ -44,6 +45,7 @@ class PromptModel(BaseModel):
     command: str
     user_id: str
     name: str
+    description: Optional[str] = None
     content: str
     data: Optional[dict] = None
     meta: Optional[dict] = None
@@ -80,9 +82,26 @@ class PromptAccessListResponse(BaseModel):
     total: int
 
 
+class PromptAppSummaryResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    user_id: str
+    user: Optional[UserResponse] = None
+    is_active: Optional[bool] = True
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+
+
+class PromptAppSummaryListResponse(BaseModel):
+    items: list[PromptAppSummaryResponse]
+    total: int
+
+
 class PromptForm(BaseModel):
     command: str
     name: str  # Changed from title
+    description: Optional[str] = None
     content: str
     data: Optional[dict] = None
     meta: Optional[dict] = None
@@ -120,6 +139,7 @@ class PromptsTable:
             user_id=user_id,
             command=form_data.command,
             name=form_data.name,
+            description=form_data.description or '',
             content=form_data.content,
             data=form_data.data or {},
             meta=form_data.meta or {},
@@ -142,6 +162,7 @@ class PromptsTable:
                     current_access_grants = await self._get_access_grants(prompt_id, db=db)
                     snapshot = {
                         'name': form_data.name,
+                        'description': form_data.description or '',
                         'content': form_data.content,
                         'command': form_data.command,
                         'data': form_data.data or {},
@@ -228,6 +249,38 @@ class PromptsTable:
 
             return prompts
 
+    async def get_prompt_app_summaries(self, db: Optional[AsyncSession] = None) -> PromptAppSummaryListResponse:
+        async with get_async_db_context(db) as db:
+            result = await db.execute(
+                select(Prompt).filter(Prompt.is_active == True).order_by(Prompt.updated_at.desc())
+            )
+            prompts = result.scalars().all()
+
+            user_ids = list({prompt.user_id for prompt in prompts})
+            users = await Users.get_users_by_user_ids(user_ids, db=db) if user_ids else []
+            users_dict = {user.id: user for user in users}
+
+            return PromptAppSummaryListResponse(
+                items=[
+                    PromptAppSummaryResponse(
+                        id=prompt.id,
+                        name=prompt.name,
+                        description=prompt.description or '',
+                        user_id=prompt.user_id,
+                        user=(
+                            UserResponse(**UserModel.model_validate(users_dict[prompt.user_id]).model_dump())
+                            if prompt.user_id in users_dict
+                            else None
+                        ),
+                        is_active=prompt.is_active,
+                        created_at=prompt.created_at,
+                        updated_at=prompt.updated_at,
+                    )
+                    for prompt in prompts
+                ],
+                total=len(prompts),
+            )
+
     async def get_prompts_by_user_id(
         self, user_id: str, permission: str = 'write', db: Optional[AsyncSession] = None
     ) -> list[PromptUserResponse]:
@@ -283,6 +336,7 @@ class PromptsTable:
         filter: dict = {},
         skip: int = 0,
         limit: int = 30,
+        enforce_access_control: bool = True,
         db: Optional[AsyncSession] = None,
     ) -> PromptListResponse:
         async with get_async_db_context(db) as db:
@@ -295,6 +349,7 @@ class PromptsTable:
                     query = query.filter(
                         or_(
                             Prompt.name.ilike(f'%{query_key}%'),
+                            Prompt.description.ilike(f'%{query_key}%'),
                             Prompt.command.ilike(f'%{query_key}%'),
                             Prompt.content.ilike(f'%{query_key}%'),
                             User.name.ilike(f'%{query_key}%'),
@@ -308,15 +363,15 @@ class PromptsTable:
                 elif view_option == 'shared':
                     query = query.filter(Prompt.user_id != user_id)
 
-                # Apply access grant filtering
-                query = AccessGrants.has_permission_filter(
-                    db=db,
-                    query=query,
-                    DocumentModel=Prompt,
-                    filter=filter,
-                    resource_type='prompt',
-                    permission='read',
-                )
+                if enforce_access_control:
+                    query = AccessGrants.has_permission_filter(
+                        db=db,
+                        query=query,
+                        DocumentModel=Prompt,
+                        filter=filter,
+                        resource_type='prompt',
+                        permission='read',
+                    )
 
                 tag = filter.get('tag')
                 if tag:
@@ -420,12 +475,14 @@ class PromptsTable:
                 # Check if content changed to decide on history creation
                 content_changed = (
                     prompt.name != form_data.name
+                    or prompt.description != (form_data.description or '')
                     or prompt.content != form_data.content
                     or form_data.access_grants is not None
                 )
 
                 # Update prompt fields
                 prompt.name = form_data.name
+                prompt.description = form_data.description or ''
                 prompt.content = form_data.content
                 prompt.data = form_data.data or prompt.data
                 prompt.meta = form_data.meta or prompt.meta
@@ -440,6 +497,7 @@ class PromptsTable:
                 if content_changed:
                     snapshot = {
                         'name': form_data.name,
+                        'description': form_data.description or '',
                         'content': form_data.content,
                         'command': command,
                         'data': form_data.data or {},
@@ -486,6 +544,7 @@ class PromptsTable:
                 # Check if content changed to decide on history creation
                 content_changed = (
                     prompt.name != form_data.name
+                    or prompt.description != (form_data.description or '')
                     or prompt.command != form_data.command
                     or prompt.content != form_data.content
                     or form_data.access_grants is not None
@@ -494,6 +553,7 @@ class PromptsTable:
 
                 # Update prompt fields
                 prompt.name = form_data.name
+                prompt.description = form_data.description or ''
                 prompt.command = form_data.command
                 prompt.content = form_data.content
                 prompt.data = form_data.data or prompt.data
@@ -514,6 +574,7 @@ class PromptsTable:
                 if content_changed:
                     snapshot = {
                         'name': form_data.name,
+                        'description': form_data.description or '',
                         'content': form_data.content,
                         'command': prompt.command,
                         'data': form_data.data or {},
@@ -592,6 +653,7 @@ class PromptsTable:
                 snapshot = history_entry.snapshot
                 if snapshot:
                     prompt.name = snapshot.get('name', prompt.name)
+                    prompt.description = snapshot.get('description', prompt.description)
                     prompt.content = snapshot.get('content', prompt.content)
                     prompt.data = snapshot.get('data', prompt.data)
                     prompt.meta = snapshot.get('meta', prompt.meta)

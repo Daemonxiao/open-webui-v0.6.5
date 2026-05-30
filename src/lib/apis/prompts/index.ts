@@ -4,6 +4,7 @@ type PromptItem = {
 	id?: string; // Prompt ID
 	command: string;
 	name: string; // Changed from title
+	description?: string | null;
 	content: string;
 	data?: object | null;
 	meta?: object | null;
@@ -13,12 +14,28 @@ type PromptItem = {
 	is_production?: boolean; // Whether to set new version as production
 };
 
+type PromptAppSummary = {
+	id: string;
+	name: string;
+	description?: string | null;
+	user_id: string;
+	user?: {
+		id: string;
+		name: string;
+		email: string;
+	};
+	is_active?: boolean;
+	created_at?: number;
+	updated_at?: number;
+};
+
 type PromptHistoryItem = {
 	id: string;
 	prompt_id: string;
 	parent_id: string | null;
 	snapshot: {
 		name: string;
+		description?: string | null;
 		content: string;
 		command: string;
 		data: object;
@@ -136,6 +153,39 @@ export const getPromptTags = async (token: string = '') => {
 	return res;
 };
 
+export const getPromptApps = async (
+	token: string = ''
+): Promise<{
+	items: PromptAppSummary[];
+	total: number;
+}> => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/apps`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			authorization: `Bearer ${token}`
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			error = err.detail;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getPromptItems = async (
 	token: string = '',
 	query: string | null,
@@ -167,7 +217,7 @@ export const getPromptItems = async (
 		searchParams.append('page', page.toString());
 	}
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/list?${searchParams.toString()}`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/admin/list?${searchParams.toString()}`, {
 		method: 'GET',
 		headers: {
 			Accept: 'application/json',
@@ -198,7 +248,7 @@ export const getPromptItems = async (
 export const getPromptList = async (token: string = '') => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/list`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/admin/list`, {
 		method: 'GET',
 		headers: {
 			Accept: 'application/json',

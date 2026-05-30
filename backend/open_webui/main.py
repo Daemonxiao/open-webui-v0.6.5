@@ -123,6 +123,7 @@ from open_webui.models.functions import Functions
 from open_webui.models.models import Models
 from open_webui.models.users import UserModel, Users
 from open_webui.models.chats import Chats, ChatForm
+from open_webui.models.prompts import Prompts
 
 from open_webui.config import (
     # Ollama
@@ -1790,6 +1791,29 @@ async def chat_completion(
                 ),
             },
         }
+
+        prompt_app_id = form_data.pop('prompt_app_id', None)
+        if prompt_app_id:
+            prompt_app = await Prompts.get_prompt_by_id(prompt_app_id)
+            if not prompt_app or prompt_app.is_active is False:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ERROR_MESSAGES.NOT_FOUND,
+                )
+
+            prompt_app_metadata = {
+                'prompt_app_id': prompt_app.id,
+                'prompt_app_name': prompt_app.name,
+                'prompt_app_version_id': prompt_app.version_id,
+            }
+            metadata.update(prompt_app_metadata)
+            request.state.prompt_app_content = prompt_app.content
+
+            if user_message is not None:
+                user_message['metadata'] = {
+                    **(user_message.get('metadata') or {}),
+                    **prompt_app_metadata,
+                }
 
         if is_new_chat:
             metadata['chat_id'] = str(uuid4())

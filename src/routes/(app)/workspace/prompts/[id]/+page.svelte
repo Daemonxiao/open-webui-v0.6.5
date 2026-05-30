@@ -10,7 +10,7 @@
 
 	import PromptEditor from '$lib/components/workspace/Prompts/PromptEditor.svelte';
 
-	let prompt = null;
+	let prompt: any = null;
 	let disabled = false;
 
 	// Get prompt ID from route params
@@ -30,6 +30,7 @@
 				id: updatedPrompt.id,
 				name: updatedPrompt.name,
 				command: updatedPrompt.command,
+				description: updatedPrompt.description,
 				content: updatedPrompt.content,
 				version_id: updatedPrompt.version_id,
 				tags: updatedPrompt.tags,
@@ -47,11 +48,12 @@
 			});
 
 			if (_prompt) {
-				disabled = !_prompt.write_access ?? true;
+				disabled = !(_prompt.write_access ?? false);
 				prompt = {
 					id: _prompt.id,
 					name: _prompt.name,
 					command: _prompt.command,
+					description: _prompt.description,
 					content: _prompt.content,
 					version_id: _prompt.version_id,
 					tags: _prompt.tags,

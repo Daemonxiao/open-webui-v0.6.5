@@ -91,38 +91,6 @@
 		</div>
 
 		<div class="flex flex-col w-full">
-			<div class="flex w-full justify-between my-1">
-				<div class=" self-center text-xs font-medium">
-					{$i18n.t('Prompts Access')}
-				</div>
-				<Switch bind:state={permissions.workspace.prompts} />
-			</div>
-
-			{#if permissions.workspace.prompts}
-				<div class="ml-2 flex flex-col gap-2 pt-0.5 pb-1">
-					<div class="flex w-full justify-between">
-						<div class="self-center text-xs">
-							{$i18n.t('Import Prompts')}
-						</div>
-						<Switch bind:state={permissions.workspace.prompts_import} />
-					</div>
-					<div class="flex w-full justify-between">
-						<div class="self-center text-xs">
-							{$i18n.t('Export Prompts')}
-						</div>
-						<Switch bind:state={permissions.workspace.prompts_export} />
-					</div>
-				</div>
-			{:else if defaultPermissions?.workspace?.prompts}
-				<div class="pb-0.5">
-					<div class="text-xs text-gray-500">
-						{$i18n.t('This is a default user permission and will remain enabled.')}
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		<div class="flex flex-col w-full">
 			<Tooltip
 				className="flex w-full justify-between my-1"
 				content={$i18n.t(
@@ -248,40 +216,6 @@
 					<Switch bind:state={permissions.sharing.public_knowledge} />
 				</div>
 				{#if defaultPermissions?.sharing?.public_knowledge && !permissions.sharing.public_knowledge}
-					<div>
-						<div class="text-xs text-gray-500">
-							{$i18n.t('This is a default user permission and will remain enabled.')}
-						</div>
-					</div>
-				{/if}
-			</div>
-		{/if}
-
-		<div class="flex flex-col w-full">
-			<div class="flex w-full justify-between my-1">
-				<div class=" self-center text-xs font-medium">
-					{$i18n.t('Prompts Sharing')}
-				</div>
-				<Switch bind:state={permissions.sharing.prompts} />
-			</div>
-			{#if defaultPermissions?.sharing?.prompts && !permissions.sharing.prompts}
-				<div>
-					<div class="text-xs text-gray-500">
-						{$i18n.t('This is a default user permission and will remain enabled.')}
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		{#if permissions.sharing.prompts}
-			<div class="flex flex-col w-full">
-				<div class="flex w-full justify-between my-1">
-					<div class=" self-center text-xs font-medium">
-						{$i18n.t('Prompts Public Sharing')}
-					</div>
-					<Switch bind:state={permissions.sharing.public_prompts} />
-				</div>
-				{#if defaultPermissions?.sharing?.public_prompts && !permissions.sharing.public_prompts}
 					<div>
 						<div class="text-xs text-gray-500">
 							{$i18n.t('This is a default user permission and will remain enabled.')}

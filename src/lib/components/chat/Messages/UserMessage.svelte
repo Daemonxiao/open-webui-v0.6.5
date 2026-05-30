@@ -367,6 +367,15 @@
 				</div>
 			{:else if message.content !== ''}
 				<div class="w-full">
+					{#if message?.metadata?.prompt_app_name}
+						<div class="flex {($settings?.chatBubble ?? true) ? 'justify-end' : 'w-full'} mb-1">
+							<div
+								class="text-xs px-2 py-1 rounded-lg bg-gray-50 dark:bg-gray-850 text-gray-500 max-w-[90%] line-clamp-1"
+							>
+								{$i18n.t('Prompt App')}: {message.metadata.prompt_app_name}
+							</div>
+						</div>
+					{/if}
 					<div class="flex {($settings?.chatBubble ?? true) ? 'justify-end pb-1' : 'w-full'}">
 						<div
 							class="rounded-3xl {($settings?.chatBubble ?? true)

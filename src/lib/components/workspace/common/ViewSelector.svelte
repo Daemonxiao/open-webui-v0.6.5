@@ -9,12 +9,13 @@
 
 	export let value = '';
 	export let placeholder = $i18n.t('Select view');
+	export let includeShared = true;
 	export let onChange: (value: string) => void = () => {};
 
-	const items = [
+	$: items = [
 		{ value: '', label: $i18n.t('All') },
 		{ value: 'created', label: $i18n.t('Created by you') },
-		{ value: 'shared', label: $i18n.t('Shared with you') }
+		...(includeShared ? [{ value: 'shared', label: $i18n.t('Shared with you') }] : [])
 	];
 </script>
 

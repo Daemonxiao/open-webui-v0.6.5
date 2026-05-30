@@ -11,6 +11,7 @@
 	let prompt: {
 		name: string;
 		command: string;
+		description: string;
 		content: string;
 		tags: string[];
 		access_grants: any[];
@@ -46,6 +47,7 @@
 			prompt = {
 				name: _prompt.name || _prompt.title || 'Prompt',
 				command: _prompt.command,
+				description: _prompt.description || '',
 				content: _prompt.content,
 				tags: _prompt.tags || [],
 				access_grants: _prompt.access_grants !== undefined ? _prompt.access_grants : []
@@ -66,6 +68,7 @@
 			prompt = {
 				name: _prompt.name || _prompt.title || 'Prompt',
 				command: _prompt.command,
+				description: _prompt.description || '',
 				content: _prompt.content,
 				tags: _prompt.tags || [],
 				access_grants: _prompt.access_grants !== undefined ? _prompt.access_grants : []
