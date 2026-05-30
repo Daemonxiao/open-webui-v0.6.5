@@ -15,7 +15,7 @@ env:
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
   TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
-  NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun:latest' }}
+  NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
   NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
       ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
       ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
       ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
-      NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun:latest' }}
+      NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'calciumion/new-api:v1.0.0-rc.8' }}
       ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}

@@ -8,7 +8,7 @@ ACR_REPOSITORY="${ACR_REPOSITORY:-open-webui}"
 ACR_INSTANCE_ID="${ACR_INSTANCE_ID:-}"
 APP_PORT="${APP_PORT:-3000}"
 NEW_API_PORT="${NEW_API_PORT:-3001}"
-NEW_API_SOURCE_IMAGE="${NEW_API_SOURCE_IMAGE:-ghcr.io/heibaijian/tokenfun:latest}"
+NEW_API_SOURCE_IMAGE="${NEW_API_SOURCE_IMAGE:-calciumion/new-api:v1.0.0-rc.8}"
 TF_LOCK_INSTANCE="${TF_LOCK_INSTANCE:-ow-hai-tf-lock}"
 TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform_locks}"
 
