@@ -104,6 +104,7 @@ from open_webui.routers import (
     utils,
     scim,
     terminals,
+    tokenfun_usage,
     automations,
     calendar,
 )
@@ -1457,6 +1458,8 @@ app.include_router(utils.router, prefix='/api/v1/utils', tags=['utils'])
 app.include_router(terminals.router, prefix='/api/v1/terminals', tags=['terminals'])
 app.include_router(automations.router, prefix='/api/v1/automations', tags=['automations'])
 app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars'])
+app.include_router(tokenfun_usage.router, prefix='/api/usage/tokenfun', tags=['tokenfun-usage'])
+app.include_router(tokenfun_usage.admin_router, prefix='/api/admin/usage/tokenfun', tags=['tokenfun-usage-admin'])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

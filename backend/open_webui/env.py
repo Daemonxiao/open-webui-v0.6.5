@@ -242,6 +242,15 @@ FORWARD_SESSION_INFO_HEADER_MESSAGE_ID = os.environ.get(
 )
 FORWARD_SESSION_INFO_HEADER_CHAT_ID = os.environ.get('FORWARD_SESSION_INFO_HEADER_CHAT_ID', 'X-OpenWebUI-Chat-Id')
 
+####################################
+# TOKENFUN_USAGE
+####################################
+
+TOKENFUN_USAGE_ENABLED = os.environ.get('TOKENFUN_USAGE_ENABLED', 'False').lower() == 'true'
+TOKENFUN_USAGE_API_BASE_URL = os.environ.get('TOKENFUN_USAGE_API_BASE_URL', '').rstrip('/')
+TOKENFUN_USAGE_ADMIN_KEY = os.environ.get('TOKENFUN_USAGE_ADMIN_KEY', '')
+TOKENFUN_USAGE_SOURCE = os.environ.get('TOKENFUN_USAGE_SOURCE', 'open_webui')
+
 # Experimental feature, may be removed in future
 ENABLE_STAR_SESSIONS_MIDDLEWARE = os.environ.get('ENABLE_STAR_SESSIONS_MIDDLEWARE', 'False').lower() == 'true'
 

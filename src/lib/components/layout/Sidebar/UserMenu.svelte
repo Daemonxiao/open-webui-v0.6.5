@@ -29,6 +29,7 @@
 	import Settings from '$lib/components/icons/Settings.svelte';
 	import Code from '$lib/components/icons/Code.svelte';
 	import UserGroup from '$lib/components/icons/UserGroup.svelte';
+	import ChartBar from '$lib/components/icons/ChartBar.svelte';
 	import SignOut from '$lib/components/icons/SignOut.svelte';
 	import FaceSmile from '$lib/components/icons/FaceSmile.svelte';
 	import UserStatusModal from './UserStatusModal.svelte';
@@ -253,6 +254,29 @@
 				</div>
 				<div class=" self-center truncate">{$i18n.t('Settings')}</div>
 			</button>
+
+			<a
+				href="/usage"
+				draggable="false"
+				class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+				on:click={async (e) => {
+					if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+						return;
+					}
+					e.preventDefault();
+					show = false;
+					goto('/usage');
+					if ($mobile) {
+						await tick();
+						showSidebar.set(false);
+					}
+				}}
+			>
+				<div class=" self-center mr-3">
+					<ChartBar className="w-5 h-5" strokeWidth="1.5" />
+				</div>
+				<div class=" self-center truncate">用量统计</div>
+			</a>
 
 			{#if role === 'admin'}
 				<a
