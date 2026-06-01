@@ -128,6 +128,8 @@ jobs:
       ALIBABA_CLOUD_REGION_ID: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
       OPEN_WEBUI_ENV_HAI_B64: ${{ secrets.OPEN_WEBUI_ENV_HAI_B64 }}
       NEW_API_OPENWEBUI_TOKEN: ${{ secrets.NEW_API_OPENWEBUI_TOKEN }}
+      TOKENFUN_USAGE_ADMIN_KEY: ${{ secrets.TOKENFUN_USAGE_ADMIN_KEY }}
+      TOKENFUN_USAGE_API_BASE_URL: ${{ vars.TOKENFUN_USAGE_API_BASE_URL }}
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       OPEN_WEBUI_IMAGE: ${{ needs.build.outputs.image }}
