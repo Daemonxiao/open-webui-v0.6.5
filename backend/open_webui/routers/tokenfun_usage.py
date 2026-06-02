@@ -164,9 +164,9 @@ async def get_self_tokenfun_usage_summary(
 ):
     return await _proxy_get(
         request,
-        '/api/log/stat',
+        '/api/external-usage/summary',
         {
-            'external_source': TOKENFUN_USAGE_SOURCE,
+            'source': TOKENFUN_USAGE_SOURCE,
             'external_user_id': user.id,
             'start_timestamp': start_timestamp,
             'end_timestamp': end_timestamp,
