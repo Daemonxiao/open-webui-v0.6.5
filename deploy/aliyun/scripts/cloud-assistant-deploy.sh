@@ -24,6 +24,33 @@ mask_value() {
   fi
 }
 
+read_env_file_value() {
+  local file="$1"
+  local key="$2"
+  local line
+  local name
+  local value
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    name="${line%%=*}"
+    if [ "$name" != "$key" ] || [ "$line" = "$name" ]; then
+      continue
+    fi
+    value="${line#*=}"
+    value="${value%$'\r'}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    printf '%s' "$value"
+    return 0
+  done < "$file"
+}
+
 resolve_acr_credentials() {
   if [ -n "${ACR_USERNAME:-}" ] && [ -n "${ACR_PASSWORD:-}" ]; then
     ACR_LOGIN_USERNAME="$ACR_USERNAME"
@@ -177,7 +204,7 @@ main() {
   local new_api_port="${NEW_API_PORT:-3001}"
   local new_api_openwebui_base_url="${NEW_API_OPENWEBUI_BASE_URL:-http://host.containers.internal:${new_api_port}/v1}"
   local tokenfun_usage_api_base_url="${TOKENFUN_USAGE_API_BASE_URL:-http://host.containers.internal:${new_api_port}}"
-  local tokenfun_usage_admin_key="${TOKENFUN_USAGE_ADMIN_KEY:-${NEW_API_OPENWEBUI_TOKEN:-}}"
+  local tokenfun_usage_admin_key
   local compose_env="$TMP_DIR/compose.env"
   local env_hai="$TMP_DIR/.env.hai"
   local env_open_webui="$TMP_DIR/.env.open-webui"
@@ -191,6 +218,18 @@ main() {
   resolve_open_webui_pull_image
 
   printf '%s' "$OPEN_WEBUI_ENV_HAI_B64" | base64 -d > "$env_hai"
+  tokenfun_usage_admin_key="${TOKENFUN_USAGE_ADMIN_KEY:-${NEW_API_OPENWEBUI_TOKEN:-}}"
+  if [ -z "$tokenfun_usage_admin_key" ]; then
+    tokenfun_usage_admin_key="$(read_env_file_value "$env_hai" OPENAI_API_KEY)"
+  fi
+  if [ -z "$tokenfun_usage_admin_key" ]; then
+    tokenfun_usage_admin_key="$(read_env_file_value "$env_hai" OPENAI_API_KEYS)"
+  fi
+  if [ -z "$tokenfun_usage_admin_key" ]; then
+    echo "Missing tokenfun usage admin key. Set TOKENFUN_USAGE_ADMIN_KEY, NEW_API_OPENWEBUI_TOKEN, or OPENAI_API_KEY in OPEN_WEBUI_ENV_HAI_B64." >&2
+    return 1
+  fi
+  mask_value "$tokenfun_usage_admin_key"
   {
     printf 'OPEN_WEBUI_IMAGE=%s\n' "$OPEN_WEBUI_PULL_IMAGE"
     printf 'OPEN_WEBUI_PORT=%s\n' "$app_port"
