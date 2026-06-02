@@ -2,6 +2,15 @@ name: Deploy Open WebUI to Alibaba Cloud
 
 on:
   workflow_dispatch:
+    inputs:
+      use_slim_image:
+        description: "Build a slimmer image without pre-downloading embedding, whisper, tiktoken, and nltk caches"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -12,6 +21,7 @@ env:
   ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
   ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
   ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+  OPEN_WEBUI_USE_SLIM: ${{ inputs.use_slim_image || vars.OPEN_WEBUI_USE_SLIM || 'true' }}
   APP_PORT: ${{ vars.APP_PORT || '3000' }}
   NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
@@ -29,6 +39,7 @@ jobs:
       ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
       ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
       ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+      OPEN_WEBUI_USE_SLIM: ${{ inputs.use_slim_image || vars.OPEN_WEBUI_USE_SLIM || 'true' }}
       APP_PORT: ${{ vars.APP_PORT || '3000' }}
       NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
       ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
@@ -101,8 +112,11 @@ jobs:
           tags: |
             ${{ steps.image.outputs.image }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:latest
+          cache-from: type=gha,scope=open-webui
+          cache-to: type=gha,mode=max,scope=open-webui
           build-args: |
             BUILD_HASH=${{ github.sha }}
+            USE_SLIM=${{ env.OPEN_WEBUI_USE_SLIM }}
 
   deploy:
     name: Deploy Open WebUI

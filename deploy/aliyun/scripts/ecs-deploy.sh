@@ -4,6 +4,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/open-webui}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/data}"
 CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
+OPEN_WEBUI_CANDIDATE_CONTAINER_NAME="${OPEN_WEBUI_CANDIDATE_CONTAINER_NAME:-${CONTAINER_NAME}-candidate}"
 NEW_API_CONTAINER_NAME="${NEW_API_CONTAINER_NAME:-new-api-hai}"
 NEW_API_NETWORK_ALIAS="${NEW_API_NETWORK_ALIAS:-new-api}"
 DEPLOY_TARGET="${DEPLOY_TARGET:-open-webui}"
@@ -165,37 +166,114 @@ prune_unused_images() {
   docker image prune -af || true
 }
 
+run_open_webui_container() {
+  local name="$1"
+  local image="$2"
+  local restart_policy="$3"
+  shift 3
+
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker run -d \
+    --name "$name" \
+    --restart "$restart_policy" \
+    --network open-webui \
+    "$@" \
+    --env-file "$APP_DIR/.env.hai" \
+    --env-file "$APP_DIR/.env.open-webui" \
+    --env-file "$APP_DIR/.env" \
+    -v "$DATA_DIR:/app/backend/data" \
+    "$image"
+}
+
+wait_for_open_webui_container_health() {
+  local name="$1"
+
+  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
+    if ! docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -Fxq true; then
+      docker logs --tail=200 "$name" || true
+      return 1
+    fi
+
+    if docker exec "$name" sh -c "curl --silent --fail http://127.0.0.1:8080/health | jq -ne 'input.status == true'" >/dev/null; then
+      docker ps --filter "name=${name}"
+      return 0
+    fi
+    sleep "$HEALTH_CHECK_DELAY_SECONDS"
+  done
+
+  docker logs --tail=200 "$name" || true
+  return 1
+}
+
+wait_for_open_webui_public_health() {
+  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
+    if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
+      docker ps --filter "name=${CONTAINER_NAME}"
+      return 0
+    fi
+    sleep "$HEALTH_CHECK_DELAY_SECONDS"
+  done
+
+  return 1
+}
+
+rollback_open_webui() {
+  local previous_image="$1"
+
+  if [ -z "$previous_image" ]; then
+    echo "No previous Open WebUI image found; cannot roll back automatically." >&2
+    return 1
+  fi
+
+  echo "Rolling back Open WebUI to previous image: $previous_image"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  run_open_webui_container "$CONTAINER_NAME" "$previous_image" "unless-stopped" \
+    -p "${OPEN_WEBUI_PORT:-3000}:8080"
+  ensure_container_restart_service
+  wait_for_open_webui_public_health
+}
+
 deploy_open_webui() {
   cd "$APP_DIR"
   set -a
   . "$APP_DIR/.env"
   set +a
 
+  local previous_image
+  previous_image="$(docker inspect -f '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+
   ensure_app_network
   timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker pull "$OPEN_WEBUI_IMAGE"
+  docker rm -f "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME" >/dev/null 2>&1 || true
+  if ! run_open_webui_container "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME" "$OPEN_WEBUI_IMAGE" "no"; then
+    docker rm -f "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME" >/dev/null 2>&1 || true
+    echo "Could not start candidate Open WebUI container; keeping existing container running." >&2
+    print_docker_diagnostics
+    return 1
+  fi
+  if ! wait_for_open_webui_container_health "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME"; then
+    docker rm -f "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME" >/dev/null 2>&1 || true
+    echo "Candidate Open WebUI container failed health checks; keeping existing container running." >&2
+    print_docker_diagnostics
+    return 1
+  fi
+  docker rm -f "$OPEN_WEBUI_CANDIDATE_CONTAINER_NAME" >/dev/null 2>&1 || true
+
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    --network open-webui \
-    -p "${OPEN_WEBUI_PORT:-3000}:8080" \
-    --env-file "$APP_DIR/.env.hai" \
-    --env-file "$APP_DIR/.env.open-webui" \
-    --env-file "$APP_DIR/.env" \
-    -v "$DATA_DIR:/app/backend/data" \
-    "$OPEN_WEBUI_IMAGE"
+  if ! run_open_webui_container "$CONTAINER_NAME" "$OPEN_WEBUI_IMAGE" "unless-stopped" \
+    -p "${OPEN_WEBUI_PORT:-3000}:8080"; then
+    print_docker_diagnostics
+    rollback_open_webui "$previous_image"
+    return 1
+  fi
   ensure_container_restart_service
 
-  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
-    if curl --silent --fail "http://127.0.0.1:${OPEN_WEBUI_PORT:-3000}/health" >/dev/null; then
-      docker ps --filter "name=${CONTAINER_NAME}"
-      prune_unused_images
-      return 0
-    fi
-    sleep "$HEALTH_CHECK_DELAY_SECONDS"
-  done
+  if wait_for_open_webui_public_health; then
+    prune_unused_images
+    return 0
+  fi
 
   print_docker_diagnostics
+  rollback_open_webui "$previous_image"
   return 1
 }
 
