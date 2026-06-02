@@ -24,33 +24,6 @@ mask_value() {
   fi
 }
 
-read_env_file_value() {
-  local file="$1"
-  local key="$2"
-  local line
-  local name
-  local value
-
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      ''|\#*) continue ;;
-    esac
-    name="${line%%=*}"
-    if [ "$name" != "$key" ] || [ "$line" = "$name" ]; then
-      continue
-    fi
-    value="${line#*=}"
-    value="${value%$'\r'}"
-    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-      value="${value:1:${#value}-2}"
-    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
-      value="${value:1:${#value}-2}"
-    fi
-    printf '%s' "$value"
-    return 0
-  done < "$file"
-}
-
 resolve_acr_credentials() {
   if [ -n "${ACR_USERNAME:-}" ] && [ -n "${ACR_PASSWORD:-}" ]; then
     ACR_LOGIN_USERNAME="$ACR_USERNAME"
@@ -219,17 +192,9 @@ main() {
 
   printf '%s' "$OPEN_WEBUI_ENV_HAI_B64" | base64 -d > "$env_hai"
   tokenfun_usage_admin_key="${TOKENFUN_USAGE_ADMIN_KEY:-${NEW_API_OPENWEBUI_TOKEN:-}}"
-  if [ -z "$tokenfun_usage_admin_key" ]; then
-    tokenfun_usage_admin_key="$(read_env_file_value "$env_hai" OPENAI_API_KEY)"
+  if [ -n "$tokenfun_usage_admin_key" ]; then
+    mask_value "$tokenfun_usage_admin_key"
   fi
-  if [ -z "$tokenfun_usage_admin_key" ]; then
-    tokenfun_usage_admin_key="$(read_env_file_value "$env_hai" OPENAI_API_KEYS)"
-  fi
-  if [ -z "$tokenfun_usage_admin_key" ]; then
-    echo "Missing tokenfun usage admin key. Set TOKENFUN_USAGE_ADMIN_KEY, NEW_API_OPENWEBUI_TOKEN, or OPENAI_API_KEY in OPEN_WEBUI_ENV_HAI_B64." >&2
-    return 1
-  fi
-  mask_value "$tokenfun_usage_admin_key"
   {
     printf 'OPEN_WEBUI_IMAGE=%s\n' "$OPEN_WEBUI_PULL_IMAGE"
     printf 'OPEN_WEBUI_PORT=%s\n' "$app_port"
@@ -257,9 +222,11 @@ main() {
     printf 'ENABLE_FORWARD_USER_INFO_HEADERS=True\n'
     printf 'TOKENFUN_USAGE_ENABLED=True\n'
     printf 'TOKENFUN_USAGE_API_BASE_URL=%s\n' "$tokenfun_usage_api_base_url"
-    printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key"
     printf 'TOKENFUN_USAGE_SOURCE=open_webui\n'
   } >> "$env_open_webui"
+  if [ -n "$tokenfun_usage_admin_key" ]; then
+    printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key" >> "$env_open_webui"
+  fi
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
