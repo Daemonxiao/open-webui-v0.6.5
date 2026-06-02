@@ -210,15 +210,17 @@ main() {
       printf 'OPENAI_API_BASE_URLS=%s\n' "$new_api_openwebui_base_url"
       printf 'OPENAI_API_KEY=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
       printf 'OPENAI_API_KEYS=%s\n' "$NEW_API_OPENWEBUI_TOKEN"
-      printf 'ENABLE_FORWARD_USER_INFO_HEADERS=True\n'
-      printf 'TOKENFUN_USAGE_ENABLED=True\n'
-      printf 'TOKENFUN_USAGE_API_BASE_URL=%s\n' "$tokenfun_usage_api_base_url"
-      printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key"
-      printf 'TOKENFUN_USAGE_SOURCE=open_webui\n'
     } > "$env_open_webui"
   else
     printf '# New API is configured in the Open WebUI web UI.\n' > "$env_open_webui"
   fi
+  {
+    printf 'ENABLE_FORWARD_USER_INFO_HEADERS=True\n'
+    printf 'TOKENFUN_USAGE_ENABLED=True\n'
+    printf 'TOKENFUN_USAGE_API_BASE_URL=%s\n' "$tokenfun_usage_api_base_url"
+    printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key"
+    printf 'TOKENFUN_USAGE_SOURCE=open_webui\n'
+  } >> "$env_open_webui"
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
