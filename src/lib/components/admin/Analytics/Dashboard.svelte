@@ -1,80 +1,98 @@
 <script lang="ts">
-	import { onMount, getContext } from 'svelte';
+	import { onMount } from 'svelte';
 	import { models } from '$lib/stores';
 	import {
-		getSummary,
-		getModelAnalytics,
-		getUserAnalytics,
-		getDailyStats,
-		getTokenUsage
-	} from '$lib/apis/analytics';
-	import { getGroups } from '$lib/apis/groups';
+		getAdminTokenfunUsageModels,
+		getAdminTokenfunUsageSummary,
+		getAdminTokenfunUsageUsers
+	} from '$lib/apis/tokenfun-usage';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
-	import ChartLine from './ChartLine.svelte';
-	import AnalyticsModelModal from './AnalyticsModelModal.svelte';
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { formatNumber } from '$lib/utils';
-	import { goto } from '$app/navigation';
 
-	const i18n = getContext('i18n');
-
-	// Time period - persist in localStorage
-	let selectedPeriod =
-		(typeof localStorage !== 'undefined' && localStorage.getItem('analyticsPeriod')) || '7d';
-	$: periods = [
-		{ value: '24h', label: $i18n.t('Last 24 hours') },
-		{ value: '7d', label: $i18n.t('Last 7 days') },
-		{ value: '30d', label: $i18n.t('Last 30 days') },
-		{ value: '90d', label: $i18n.t('Last 90 days') },
-		{ value: 'all', label: $i18n.t('All time') }
-	];
-
-	// User group filter
-	let groups: Array<{ id: string; name: string }> = [];
-	let selectedGroupId: string | null = null;
-
-	const getDateRange = (period: string): { start: number | null; end: number | null } => {
-		const now = Math.floor(Date.now() / 1000);
-		const day = 86400;
-		switch (period) {
-			case '24h':
-				return { start: now - day, end: now };
-			case '7d':
-				return { start: now - 7 * day, end: now };
-			case '30d':
-				return { start: now - 30 * day, end: now };
-			case '90d':
-				return { start: now - 90 * day, end: now };
-			default:
-				return { start: null, end: null };
-		}
+	const maxRangeDays = 31;
+	const daySeconds = 86400;
+	const toDateInput = (date: Date) => {
+		const year = date.getFullYear();
+		const month = `${date.getMonth() + 1}`.padStart(2, '0');
+		const day = `${date.getDate()}`.padStart(2, '0');
+		return `${year}-${month}-${day}`;
 	};
+	const today = toDateInput(new Date());
+	const defaultStartDate = toDateInput(new Date(Date.now() - 6 * daySeconds * 1000));
+	const startDateStorageKey = 'analyticsStartDateLocal';
+	const endDateStorageKey = 'analyticsEndDateLocal';
 
-	// Data
-	let summary = { total_messages: 0, total_chats: 0, total_models: 0, total_users: 0 };
-	let modelStats: Array<{ model_id: string; count: number; name?: string }> = [];
-	let userStats: Array<{ user_id: string; name?: string; email?: string; count: number }> = [];
-	let dailyStats: Array<{ date: string; models: Record<string, number> }> = [];
-	let tokenStats: Record<
-		string,
-		{ input_tokens: number; output_tokens: number; total_tokens: number }
-	> = {};
-	let totalTokens = { input: 0, output: 0, total: 0 };
+	let startDate =
+		typeof localStorage !== 'undefined'
+			? (localStorage.getItem(startDateStorageKey) ?? defaultStartDate)
+			: defaultStartDate;
+	let endDate =
+		typeof localStorage !== 'undefined'
+			? (localStorage.getItem(endDateStorageKey) ?? today)
+			: today;
 
+	let summary = {
+		request_count: 0,
+		total_tokens: 0,
+		prompt_tokens: 0,
+		completion_tokens: 0,
+		cost_usd: 0,
+		cost_display: '$0.000000'
+	};
+	let modelStats: Array<any> = [];
+	let userStats: Array<any> = [];
 	let loading = true;
+	let tokenfunError = '';
 
-	// Selected model for drill-down
-	let selectedModel: { id: string; name: string } | null = null;
-	let showModelModal = false;
-
-	// Sorting
 	let modelOrderBy = 'count';
 	let modelDirection: 'asc' | 'desc' = 'desc';
-	let userOrderBy = 'count';
+	let userOrderBy = 'cost';
 	let userDirection: 'asc' | 'desc' = 'desc';
+
+	const parseDate = (value: string) => {
+		const [year, month, day] = value.split('-').map((part) => Number(part));
+		if (!year || !month || !day) {
+			return null;
+		}
+		return new Date(year, month - 1, day);
+	};
+
+	const clampDateRange = () => {
+		let start = parseDate(startDate) ?? new Date(Date.now() - 6 * daySeconds * 1000);
+		let end = parseDate(endDate) ?? new Date();
+
+		if (start > end) {
+			start = new Date(end);
+		}
+
+		const maxStart = new Date(end.getTime() - (maxRangeDays - 1) * daySeconds * 1000);
+		if (start < maxStart) {
+			start = maxStart;
+		}
+
+		startDate = toDateInput(start);
+		endDate = toDateInput(end);
+	};
+
+	const getDateRange = () => {
+		clampDateRange();
+		const start = parseDate(startDate);
+		const end = parseDate(endDate);
+		const startTimestamp = Math.floor((start ?? new Date()).getTime() / 1000);
+		const endDateTime = end ?? new Date();
+		endDateTime.setHours(23, 59, 59, 999);
+		const endTimestamp = Math.floor(endDateTime.getTime() / 1000);
+		return { start: startTimestamp, end: endTimestamp };
+	};
+
+	const formatCost = (item: any) =>
+		item?.cost_display ?? `$${Number(item?.cost_usd ?? 0).toFixed(6)}`;
+
+	const compareNumber = (a: number, b: number, direction: 'asc' | 'desc') =>
+		direction === 'asc' ? a - b : b - a;
 
 	const toggleModelSort = (key: string) => {
 		if (modelOrderBy === key) {
@@ -90,201 +108,132 @@
 			userDirection = userDirection === 'asc' ? 'desc' : 'asc';
 		} else {
 			userOrderBy = key;
-			userDirection = key === 'user_id' ? 'asc' : 'desc';
+			userDirection = key === 'name' ? 'asc' : 'desc';
 		}
 	};
 
 	const loadDashboard = async () => {
 		loading = true;
+		tokenfunError = '';
 		try {
-			const { start, end } = getDateRange(selectedPeriod);
-			const granularity = selectedPeriod === '24h' ? 'hourly' : 'daily';
-			const [summaryRes, modelsRes, usersRes, dailyRes, tokensRes] = await Promise.all([
-				getSummary(localStorage.token, start, end, selectedGroupId),
-				getModelAnalytics(localStorage.token, start, end, selectedGroupId),
-				getUserAnalytics(localStorage.token, start, end, 50, selectedGroupId),
-				getDailyStats(localStorage.token, start, end, granularity, selectedGroupId),
-				getTokenUsage(localStorage.token, start, end, selectedGroupId)
-			]);
-
-			summary = summaryRes ?? summary;
+			const { start, end } = getDateRange();
+			if (typeof localStorage !== 'undefined') {
+				localStorage.setItem(startDateStorageKey, startDate);
+				localStorage.setItem(endDateStorageKey, endDate);
+			}
 
 			const modelsMap = new Map($models.map((m) => [m.id, m.name || m.id]));
-			modelStats = (modelsRes?.models ?? []).map((entry) => ({
+			const [summaryRes, modelsRes, usersRes] = await Promise.all([
+				getAdminTokenfunUsageSummary(localStorage.token, start, end),
+				getAdminTokenfunUsageModels(localStorage.token, start, end, 1, 50),
+				getAdminTokenfunUsageUsers(localStorage.token, start, end, 1, 50)
+			]);
+			summary = summaryRes?.data ?? summary;
+			modelStats = (modelsRes?.data?.items ?? []).map((entry) => ({
 				...entry,
-				name: modelsMap.get(entry.model_id) || entry.model_id
+				name: modelsMap.get(entry.model_name) || entry.model_name
 			}));
-
-			userStats = usersRes?.users ?? [];
-			dailyStats = dailyRes?.data ?? [];
-
-			// Process token data
-			if (tokensRes) {
-				tokenStats = {};
-				for (const m of tokensRes.models) {
-					tokenStats[m.model_id] = {
-						input_tokens: m.input_tokens,
-						output_tokens: m.output_tokens,
-						total_tokens: m.total_tokens
-					};
-				}
-				totalTokens = {
-					input: tokensRes.total_input_tokens,
-					output: tokensRes.total_output_tokens,
-					total: tokensRes.total_tokens
-				};
-			}
+			userStats = usersRes?.data?.items ?? [];
 		} catch (err) {
-			console.error('Dashboard load failed:', err);
+			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
+			summary = {
+				request_count: 0,
+				total_tokens: 0,
+				prompt_tokens: 0,
+				completion_tokens: 0,
+				cost_usd: 0,
+				cost_display: '$0.000000'
+			};
+			modelStats = [];
+			userStats = [];
+		} finally {
+			loading = false;
 		}
-		loading = false;
 	};
-
-	$: if (selectedPeriod || selectedGroupId !== undefined) {
-		loadDashboard();
-	}
-
-	onMount(async () => {
-		// Load groups for filter
-		try {
-			const res = await getGroups(localStorage.token);
-			groups = res ?? [];
-		} catch (e) {
-			console.error('Failed to load groups:', e);
-		}
-	});
 
 	$: sortedModels = [...modelStats].sort((a, b) => {
 		if (modelOrderBy === 'name') {
-			return modelDirection === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+			const nameA = a.name || a.model_name;
+			const nameB = b.name || b.model_name;
+			return modelDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
 		}
 		if (modelOrderBy === 'tokens') {
-			const aTokens = tokenStats[a.model_id]?.total_tokens ?? 0;
-			const bTokens = tokenStats[b.model_id]?.total_tokens ?? 0;
-			return modelDirection === 'asc' ? aTokens - bTokens : bTokens - aTokens;
+			return compareNumber(
+				Number(a.total_tokens ?? 0),
+				Number(b.total_tokens ?? 0),
+				modelDirection
+			);
 		}
-		return modelDirection === 'asc' ? a.count - b.count : b.count - a.count;
+		return compareNumber(
+			Number(a.request_count ?? 0),
+			Number(b.request_count ?? 0),
+			modelDirection
+		);
 	});
 
 	$: sortedUsers = [...userStats].sort((a, b) => {
 		if (userOrderBy === 'name') {
-			const nameA = a.name || a.user_id;
-			const nameB = b.name || b.user_id;
+			const nameA = a.external_username || a.external_user_email || a.external_user_id || '';
+			const nameB = b.external_username || b.external_user_email || b.external_user_id || '';
 			return userDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
 		}
 		if (userOrderBy === 'tokens') {
-			const aTokens = a.total_tokens ?? 0;
-			const bTokens = b.total_tokens ?? 0;
-			return userDirection === 'asc' ? aTokens - bTokens : bTokens - aTokens;
+			return compareNumber(Number(a.total_tokens ?? 0), Number(b.total_tokens ?? 0), userDirection);
 		}
-		return userDirection === 'asc' ? a.count - b.count : b.count - a.count;
+		if (userOrderBy === 'requests') {
+			return compareNumber(
+				Number(a.request_count ?? 0),
+				Number(b.request_count ?? 0),
+				userDirection
+			);
+		}
+		return compareNumber(Number(a.cost_usd ?? 0), Number(b.cost_usd ?? 0), userDirection);
 	});
 
-	$: totalModelMessages = modelStats.reduce((sum, m) => sum + m.count, 0);
-
-	// Persist period selection
-	$: if (typeof localStorage !== 'undefined' && selectedPeriod) {
-		localStorage.setItem('analyticsPeriod', selectedPeriod);
-	}
-
-	onMount(loadDashboard);
+	onMount(() => {
+		loadDashboard();
+	});
 </script>
 
-<!-- Header with title and period selector -->
 <div
-	class="pt-0.5 pb-1 gap-1 flex flex-row justify-between items-center sticky top-0 z-10 bg-white dark:bg-gray-900"
+	class="pt-0.5 pb-2 gap-2 flex flex-col md:flex-row md:justify-between md:items-center sticky top-0 z-10 bg-white dark:bg-gray-900"
 >
-	<div class="text-lg font-medium px-0.5 shrink-0">
-		{$i18n.t('Analytics')}
+	<div>
+		<div class="text-lg font-medium px-0.5 shrink-0">分析</div>
 	</div>
 	<div class="flex items-center gap-2 flex-wrap justify-end min-w-0">
-		{#if groups.length > 0}
-			<select
-				bind:value={selectedGroupId}
-				class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-none text-right"
-			>
-				<option value={null}>{$i18n.t('All Users')}</option>
-				{#each groups as group}
-					<option value={group.id}>{group.name}</option>
-				{/each}
-			</select>
-		{/if}
-		<select
-			bind:value={selectedPeriod}
-			class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-none text-right"
+		<input
+			type="date"
+			bind:value={startDate}
+			max={endDate}
+			class="rounded-sm border border-gray-200 bg-transparent px-2 py-1 text-xs outline-none dark:border-gray-800"
+			aria-label="开始日期"
+			on:change={loadDashboard}
+		/>
+		<span class="text-xs text-gray-400">至</span>
+		<input
+			type="date"
+			bind:value={endDate}
+			min={startDate}
+			class="rounded-sm border border-gray-200 bg-transparent px-2 py-1 text-xs outline-none dark:border-gray-800"
+			aria-label="结束日期"
+			on:change={loadDashboard}
+		/>
+		<button
+			class="rounded-sm border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-850"
+			on:click={loadDashboard}
 		>
-			{#each periods as period}
-				<option value={period.value}>{period.label}</option>
-			{/each}
-		</select>
+			刷新
+		</button>
 	</div>
 </div>
 
-<!-- Model Details Modal -->
-<AnalyticsModelModal
-	bind:show={showModelModal}
-	model={selectedModel}
-	startDate={getDateRange(selectedPeriod).start}
-	endDate={getDateRange(selectedPeriod).end}
-/>
-
-<!-- Summary stats -->
-{#if !loading}
-	<div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 px-0.5 pb-2">
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300"
-				>{summary.total_messages.toLocaleString()}</span
-			>
-			{$i18n.t('messages')}</span
-		>
-		<Tooltip content={$i18n.t('Token counts are estimates and may not reflect actual API usage')}>
-			<span class="cursor-help"
-				><span class="font-medium text-gray-900 dark:text-gray-300"
-					>{formatNumber(totalTokens.total)}</span
-				>
-				{$i18n.t('tokens')}</span
-			>
-		</Tooltip>
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300"
-				>{summary.total_chats.toLocaleString()}</span
-			>
-			{$i18n.t('chats')}</span
-		>
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300">{summary.total_users}</span>
-			{$i18n.t('users')}</span
-		>
+{#if tokenfunError}
+	<div
+		class="mb-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-100"
+	>
+		tokenfun 用量暂不可用：{tokenfunError}
 	</div>
-
-	<!-- Daily usage chart -->
-	{#if dailyStats.length > 1}
-		{@const allModels = [...new Set(dailyStats.flatMap((d) => Object.keys(d.models || {})))]}
-		{@const topModels = allModels.slice(0, 8)}
-		{@const chartColors = [
-			'#3b82f6',
-			'#10b981',
-			'#f59e0b',
-			'#ef4444',
-			'#8b5cf6',
-			'#ec4899',
-			'#06b6d4',
-			'#84cc16'
-		]}
-		{@const periodMap = { '24h': 'hour', '7d': 'week', '30d': 'month', '90d': 'year', all: 'all' }}
-		<div class="mb-4">
-			<div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 px-0.5">
-				{selectedPeriod === '24h' ? $i18n.t('Hourly Messages') : $i18n.t('Daily Messages')}
-			</div>
-			<ChartLine
-				data={dailyStats}
-				models={topModels}
-				colors={chartColors}
-				height={200}
-				period={periodMap[selectedPeriod] || 'week'}
-			/>
-		</div>
-	{/if}
 {/if}
 
 {#if loading}
@@ -292,12 +241,40 @@
 		<Spinner className="size-5" />
 	</div>
 {:else}
+	<div class="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400 px-0.5 pb-3">
+		<span>
+			<span class="font-medium text-gray-900 dark:text-gray-300"
+				>{formatNumber(summary.request_count)}</span
+			>
+			API请求
+		</span>
+		<span>
+			<span class="font-medium text-gray-900 dark:text-gray-300"
+				>{formatNumber(summary.total_tokens)}</span
+			>
+			tokens
+		</span>
+		<span>
+			<span class="font-medium text-gray-900 dark:text-gray-300"
+				>{formatNumber(summary.prompt_tokens)}</span
+			>
+			输入
+		</span>
+		<span>
+			<span class="font-medium text-gray-900 dark:text-gray-300"
+				>{formatNumber(summary.completion_tokens)}</span
+			>
+			输出
+		</span>
+		<span>
+			<span class="font-medium text-gray-900 dark:text-gray-300">{formatCost(summary)}</span>
+			费用
+		</span>
+	</div>
+
 	<div class="grid md:grid-cols-2 gap-4">
-		<!-- Model Usage Table -->
 		<div>
-			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">
-				{$i18n.t('Model Usage')}
-			</div>
+			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">模型用量</div>
 			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
 					<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
@@ -309,13 +286,11 @@
 								on:click={() => toggleModelSort('name')}
 							>
 								<div class="flex gap-1.5 items-center">
-									{$i18n.t('Model')}
+									模型
 									{#if modelOrderBy === 'name'}
-										<span class="font-normal">
-											{#if modelDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
+										{#if modelDirection === 'asc'}<ChevronUp
+												className="size-2"
+											/>{:else}<ChevronDown className="size-2" />{/if}
 									{:else}
 										<span class="invisible"><ChevronUp className="size-2" /></span>
 									{/if}
@@ -326,108 +301,48 @@
 								class="px-2.5 py-2 cursor-pointer select-none text-right"
 								on:click={() => toggleModelSort('count')}
 							>
-								<div class="flex gap-1.5 items-center justify-end">
-									{$i18n.t('Messages')}
-									{#if modelOrderBy === 'count'}
-										<span class="font-normal">
-											{#if modelDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
+								<div class="flex gap-1.5 items-center justify-end">API请求</div>
 							</th>
 							<th
 								scope="col"
 								class="px-2.5 py-2 cursor-pointer select-none text-right"
 								on:click={() => toggleModelSort('tokens')}
 							>
-								<div class="flex gap-1.5 items-center justify-end">
-									{$i18n.t('Tokens')}
-									{#if modelOrderBy === 'tokens'}
-										<span class="font-normal">
-											{#if modelDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
-							</th>
-							<th
-								scope="col"
-								class="px-2.5 py-2 cursor-pointer select-none text-right w-16"
-								on:click={() => toggleModelSort('percentage')}
-							>
-								<div class="flex gap-1.5 items-center justify-end">
-									%
-									{#if modelOrderBy === 'percentage'}
-										<span class="font-normal">
-											{#if modelDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
+								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
 							</th>
 						</tr>
 					</thead>
 					<tbody>
-						{#each sortedModels as model, idx (model.model_id)}
-							<tr
-								class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-								on:click={() => {
-									selectedModel = { id: model.model_id, name: model.name };
-									showModelModal = true;
-								}}
-							>
+						{#each sortedModels as model, idx (model.model_name)}
+							<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
 								<td class="px-3 py-1 text-gray-400">{idx + 1}</td>
 								<td class="px-3 py-1 font-medium text-gray-900 dark:text-white">
 									<div class="flex items-center gap-2">
 										<img
-											src="{WEBUI_API_BASE_URL}/models/model/profile/image?id={model.model_id}"
+											src="{WEBUI_API_BASE_URL}/models/model/profile/image?id={model.model_name}"
 											alt={model.name}
 											class="size-5 rounded-full object-cover shrink-0"
 											on:error={(e) => {
 												e.target.src = '/favicon.png';
 											}}
 										/>
-										<span class="truncate max-w-[150px]">{model.name}</span>
+										<span class="truncate max-w-[180px]">{model.name}</span>
 									</div>
 								</td>
-								<td class="px-3 py-1 text-right">{model.count.toLocaleString()}</td>
-								<td class="px-3 py-1 text-right"
-									>{formatNumber(tokenStats[model.model_id]?.total_tokens ?? 0)}</td
-								>
-								<td class="px-3 py-1 text-right text-gray-400">
-									{totalModelMessages > 0
-										? ((model.count / totalModelMessages) * 100).toFixed(1)
-										: 0}%
-								</td>
+								<td class="px-3 py-1 text-right">{formatNumber(model.request_count)}</td>
+								<td class="px-3 py-1 text-right">{formatNumber(model.total_tokens)}</td>
 							</tr>
 						{/each}
 						{#if sortedModels.length === 0}
-							<tr
-								><td colspan="5" class="px-3 py-2 text-center text-gray-400"
-									>{$i18n.t('No data')}</td
-								></tr
-							>
+							<tr><td colspan="4" class="px-3 py-2 text-center text-gray-400">暂无数据</td></tr>
 						{/if}
 					</tbody>
 				</table>
 			</div>
 		</div>
 
-		<!-- User Activity Table -->
 		<div>
-			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">
-				{$i18n.t('User Activity')}
-			</div>
+			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">用户动态</div>
 			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
 					<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
@@ -439,13 +354,11 @@
 								on:click={() => toggleUserSort('name')}
 							>
 								<div class="flex gap-1.5 items-center">
-									{$i18n.t('User')}
+									用户
 									{#if userOrderBy === 'name'}
-										<span class="font-normal">
-											{#if userDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
+										{#if userDirection === 'asc'}<ChevronUp className="size-2" />{:else}<ChevronDown
+												className="size-2"
+											/>{/if}
 									{:else}
 										<span class="invisible"><ChevronUp className="size-2" /></span>
 									{/if}
@@ -454,78 +367,65 @@
 							<th
 								scope="col"
 								class="px-2.5 py-2 cursor-pointer select-none text-right"
-								on:click={() => toggleUserSort('count')}
+								on:click={() => toggleUserSort('requests')}
 							>
-								<div class="flex gap-1.5 items-center justify-end">
-									{$i18n.t('Messages')}
-									{#if userOrderBy === 'count'}
-										<span class="font-normal">
-											{#if userDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
+								<div class="flex gap-1.5 items-center justify-end">API请求</div>
 							</th>
 							<th
 								scope="col"
 								class="px-2.5 py-2 cursor-pointer select-none text-right"
 								on:click={() => toggleUserSort('tokens')}
 							>
-								<div class="flex gap-1.5 items-center justify-end">
-									{$i18n.t('Tokens')}
-									{#if userOrderBy === 'tokens'}
-										<span class="font-normal">
-											{#if userDirection === 'asc'}<ChevronUp
-													className="size-2"
-												/>{:else}<ChevronDown className="size-2" />{/if}
-										</span>
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
+								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
+							</th>
+							<th
+								scope="col"
+								class="px-2.5 py-2 cursor-pointer select-none text-right"
+								on:click={() => toggleUserSort('cost')}
+							>
+								<div class="flex gap-1.5 items-center justify-end">费用</div>
 							</th>
 						</tr>
 					</thead>
 					<tbody>
-						{#each sortedUsers as user, idx (user.user_id)}
+						{#each sortedUsers as item, idx (item.external_user_id)}
 							<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
 								<td class="px-3 py-1 text-gray-400">{idx + 1}</td>
 								<td class="px-3 py-1 font-medium text-gray-900 dark:text-white">
 									<div class="flex items-center gap-2">
 										<img
-											src="{WEBUI_API_BASE_URL}/users/{user.user_id}/profile/image"
-											alt={user.name || 'User'}
+											src="{WEBUI_API_BASE_URL}/users/{item.external_user_id}/profile/image"
+											alt={item.external_username || 'User'}
 											class="size-5 rounded-full object-cover shrink-0"
 											on:error={(e) => {
 												e.target.src = '/user.png';
 											}}
 										/>
-										<span class="truncate max-w-[150px]"
-											>{user.name || user.email || user.user_id.substring(0, 8)}</span
-										>
+										<span class="min-w-0">
+											<span class="block truncate max-w-[160px]"
+												>{item.external_username ||
+													item.external_user_email ||
+													item.external_user_id}</span
+											>
+											{#if item.external_user_email}
+												<span class="block truncate max-w-[160px] text-[11px] text-gray-400"
+													>{item.external_user_email}</span
+												>
+											{/if}
+										</span>
 									</div>
 								</td>
-								<td class="px-3 py-1 text-right">{user.count.toLocaleString()}</td>
-								<td class="px-3 py-1 text-right">{formatNumber(user.total_tokens ?? 0)}</td>
+								<td class="px-3 py-1 text-right">{formatNumber(item.request_count)}</td>
+								<td class="px-3 py-1 text-right">{formatNumber(item.total_tokens)}</td>
+								<td class="px-3 py-1 text-right">{formatCost(item)}</td>
 							</tr>
 						{/each}
 						{#if sortedUsers.length === 0}
-							<tr
-								><td colspan="4" class="px-3 py-2 text-center text-gray-400"
-									>{$i18n.t('No data')}</td
-								></tr
-							>
+							<tr><td colspan="5" class="px-3 py-2 text-center text-gray-400">暂无数据</td></tr>
 						{/if}
 					</tbody>
 				</table>
 			</div>
 		</div>
-	</div>
-
-	<div class="text-gray-500 text-xs mt-1.5 text-right">
-		ⓘ {$i18n.t('Message counts are based on assistant responses.')}
 	</div>
 {/if}

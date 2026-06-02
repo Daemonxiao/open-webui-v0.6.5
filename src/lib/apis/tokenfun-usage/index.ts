@@ -1,6 +1,24 @@
 import { WEBUI_BASE_URL } from '$lib/constants';
 
-const request = async (token: string, path: string, params: Record<string, string | number | null | undefined> = {}) => {
+const getErrorDetail = (err: any) => {
+	const detail = err?.detail ?? err?.message ?? err;
+	if (typeof detail === 'string') {
+		return detail || 'Tokenfun usage request failed';
+	}
+	if (detail && typeof detail === 'object' && 'detail' in detail) {
+		return getErrorDetail(detail);
+	}
+	if (detail?.message) {
+		return detail.message;
+	}
+	return detail ?? 'Tokenfun usage request failed';
+};
+
+const request = async (
+	token: string,
+	path: string,
+	params: Record<string, string | number | null | undefined> = {}
+) => {
 	let error = null;
 	const searchParams = new URLSearchParams();
 	for (const [key, value] of Object.entries(params)) {
@@ -23,7 +41,7 @@ const request = async (token: string, path: string, params: Record<string, strin
 			return res.json();
 		})
 		.catch((err) => {
-			error = err.detail ?? err;
+			error = getErrorDetail(err);
 			return null;
 		});
 
@@ -85,6 +103,30 @@ export const getAdminTokenfunUsageUsers = async (
 		page_size: pageSize,
 		external_user_id: externalUserId,
 		external_username: externalUsername
+	});
+
+export const getAdminTokenfunUsageModels = async (
+	token: string,
+	startTimestamp?: number | null,
+	endTimestamp?: number | null,
+	page = 1,
+	pageSize = 50
+) =>
+	request(token, '/api/admin/usage/tokenfun/models', {
+		start_timestamp: startTimestamp,
+		end_timestamp: endTimestamp,
+		p: page,
+		page_size: pageSize
+	});
+
+export const getAdminTokenfunUsageSummary = async (
+	token: string,
+	startTimestamp?: number | null,
+	endTimestamp?: number | null
+) =>
+	request(token, '/api/admin/usage/tokenfun/summary', {
+		start_timestamp: startTimestamp,
+		end_timestamp: endTimestamp
 	});
 
 export const getAdminTokenfunUsageUserChats = async (
