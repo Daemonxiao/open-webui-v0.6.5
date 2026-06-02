@@ -31,6 +31,13 @@
 	let groups = [];
 
 	let banners: Banner[] = [];
+	const analyticsCostVisibilityStorageKey = 'analyticsShowCosts';
+	let showAnalyticsCosts = false;
+
+	const updateAnalyticsCostVisibility = () => {
+		localStorage.setItem(analyticsCostVisibilityStorageKey, showAnalyticsCosts ? 'true' : 'false');
+		window.dispatchEvent(new CustomEvent('analytics-cost-visibility-change'));
+	};
 
 	// LDAP
 	let ENABLE_LDAP = false;
@@ -82,6 +89,8 @@
 	};
 
 	onMount(async () => {
+		showAnalyticsCosts = localStorage.getItem(analyticsCostVisibilityStorageKey) === 'true';
+
 		await Promise.all([
 			(async () => {
 				adminConfig = await getAdminConfig(localStorage.token);
@@ -526,6 +535,12 @@
 						<div class=" self-center text-xs font-medium">{$i18n.t('Enable Message Rating')}</div>
 
 						<Switch bind:state={adminConfig.ENABLE_MESSAGE_RATING} />
+					</div>
+
+					<div class="mb-2.5 flex w-full items-center justify-between pr-2">
+						<div class=" self-center text-xs font-medium">分析费用</div>
+
+						<Switch bind:state={showAnalyticsCosts} on:change={updateAnalyticsCostVisibility} />
 					</div>
 
 					<div class="mb-2.5 flex w-full items-center justify-between pr-2">

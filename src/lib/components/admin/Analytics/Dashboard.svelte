@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { models } from '$lib/stores';
 	import {
 		getAdminTokenfunUsageModels,
@@ -24,6 +24,7 @@
 	const defaultStartDate = toDateInput(new Date(Date.now() - 6 * daySeconds * 1000));
 	const startDateStorageKey = 'analyticsStartDateLocal';
 	const endDateStorageKey = 'analyticsEndDateLocal';
+	const analyticsCostVisibilityStorageKey = 'analyticsShowCosts';
 
 	let startDate =
 		typeof localStorage !== 'undefined'
@@ -46,10 +47,14 @@
 	let userStats: Array<any> = [];
 	let loading = true;
 	let tokenfunError = '';
+	let showAnalyticsCosts =
+		typeof localStorage !== 'undefined'
+			? localStorage.getItem(analyticsCostVisibilityStorageKey) === 'true'
+			: false;
 
 	let modelOrderBy = 'count';
 	let modelDirection: 'asc' | 'desc' = 'desc';
-	let userOrderBy = 'cost';
+	let userOrderBy = 'requests';
 	let userDirection: 'asc' | 'desc' = 'desc';
 
 	const parseDate = (value: string) => {
@@ -90,6 +95,16 @@
 
 	const formatCost = (item: any) =>
 		item?.cost_display ?? `$${Number(item?.cost_usd ?? 0).toFixed(6)}`;
+
+	const loadCostVisibility = () => {
+		showAnalyticsCosts =
+			typeof localStorage !== 'undefined'
+				? localStorage.getItem(analyticsCostVisibilityStorageKey) === 'true'
+				: false;
+		if (!showAnalyticsCosts && userOrderBy === 'cost') {
+			userOrderBy = 'requests';
+		}
+	};
 
 	const compareNumber = (a: number, b: number, direction: 'asc' | 'desc') =>
 		direction === 'asc' ? a - b : b - a;
@@ -191,7 +206,13 @@
 	});
 
 	onMount(() => {
+		loadCostVisibility();
+		window.addEventListener('analytics-cost-visibility-change', loadCostVisibility);
 		loadDashboard();
+	});
+
+	onDestroy(() => {
+		window.removeEventListener('analytics-cost-visibility-change', loadCostVisibility);
 	});
 </script>
 
@@ -266,10 +287,12 @@
 			>
 			输出
 		</span>
-		<span>
-			<span class="font-medium text-gray-900 dark:text-gray-300">{formatCost(summary)}</span>
-			费用
-		</span>
+		{#if showAnalyticsCosts}
+			<span>
+				<span class="font-medium text-gray-900 dark:text-gray-300">{formatCost(summary)}</span>
+				费用
+			</span>
+		{/if}
 	</div>
 
 	<div class="grid md:grid-cols-2 gap-4">
@@ -378,13 +401,15 @@
 							>
 								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
 							</th>
-							<th
-								scope="col"
-								class="px-2.5 py-2 cursor-pointer select-none text-right"
-								on:click={() => toggleUserSort('cost')}
-							>
-								<div class="flex gap-1.5 items-center justify-end">费用</div>
-							</th>
+							{#if showAnalyticsCosts}
+								<th
+									scope="col"
+									class="px-2.5 py-2 cursor-pointer select-none text-right"
+									on:click={() => toggleUserSort('cost')}
+								>
+									<div class="flex gap-1.5 items-center justify-end">费用</div>
+								</th>
+							{/if}
 						</tr>
 					</thead>
 					<tbody>
@@ -417,11 +442,18 @@
 								</td>
 								<td class="px-3 py-1 text-right">{formatNumber(item.request_count)}</td>
 								<td class="px-3 py-1 text-right">{formatNumber(item.total_tokens)}</td>
-								<td class="px-3 py-1 text-right">{formatCost(item)}</td>
+								{#if showAnalyticsCosts}
+									<td class="px-3 py-1 text-right">{formatCost(item)}</td>
+								{/if}
 							</tr>
 						{/each}
 						{#if sortedUsers.length === 0}
-							<tr><td colspan="5" class="px-3 py-2 text-center text-gray-400">暂无数据</td></tr>
+							<tr
+								><td
+									colspan={showAnalyticsCosts ? 5 : 4}
+									class="px-3 py-2 text-center text-gray-400">暂无数据</td
+								></tr
+							>
 						{/if}
 					</tbody>
 				</table>
