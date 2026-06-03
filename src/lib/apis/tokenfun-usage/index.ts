@@ -94,7 +94,9 @@ export const getAdminTokenfunUsageUsers = async (
 	page = 1,
 	pageSize = 20,
 	externalUserId = '',
-	externalUsername = ''
+	externalUsername = '',
+	orderBy = '',
+	orderDirection = ''
 ) =>
 	request(token, '/api/admin/usage/tokenfun/users', {
 		start_timestamp: startTimestamp,
@@ -102,7 +104,9 @@ export const getAdminTokenfunUsageUsers = async (
 		p: page,
 		page_size: pageSize,
 		external_user_id: externalUserId,
-		external_username: externalUsername
+		external_username: externalUsername,
+		order_by: orderBy,
+		order_direction: orderDirection
 	});
 
 export const getAdminTokenfunUsageModels = async (

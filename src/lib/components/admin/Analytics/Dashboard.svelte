@@ -55,6 +55,8 @@
 
 	let modelOrderBy = 'count';
 	let modelDirection: 'asc' | 'desc' = 'desc';
+	let userOrderBy: 'request_count' | 'total_tokens' = 'total_tokens';
+	let userDirection: 'asc' | 'desc' = 'desc';
 	let userPage = 1;
 	let userTotal = 0;
 	const userPageSize = 20;
@@ -161,6 +163,16 @@
 		}
 	};
 
+	const toggleUserSort = (key: 'request_count' | 'total_tokens') => {
+		if (userOrderBy === key) {
+			userDirection = userDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			userOrderBy = key;
+			userDirection = 'desc';
+		}
+		loadUserPage(1);
+	};
+
 	const updateUserStats = (usersRes: any) => {
 		userTotal = Number(usersRes?.data?.total ?? 0);
 		userStats = mergeUserStatsById(usersRes?.data?.items ?? []).map((entry: any) => ({
@@ -181,7 +193,11 @@
 				start,
 				end,
 				userPage,
-				userPageSize
+				userPageSize,
+				'',
+				'',
+				userOrderBy,
+				userDirection
 			);
 			updateUserStats(usersRes);
 		} catch (err) {
@@ -208,7 +224,17 @@
 			const [summaryRes, modelsRes, usersRes] = await Promise.all([
 				getAdminTokenfunUsageSummary(localStorage.token, start, end),
 				getAdminTokenfunUsageModels(localStorage.token, start, end, 1, 50),
-				getAdminTokenfunUsageUsers(localStorage.token, start, end, userPage, userPageSize)
+				getAdminTokenfunUsageUsers(
+					localStorage.token,
+					start,
+					end,
+					userPage,
+					userPageSize,
+					'',
+					'',
+					userOrderBy,
+					userDirection
+				)
 			]);
 			summary = summaryRes?.data ?? summary;
 			modelStats = (modelsRes?.data?.items ?? []).map((entry: any) => ({
@@ -449,11 +475,37 @@
 							<th scope="col" class="px-2.5 py-2">
 								<div class="flex gap-1.5 items-center">用户</div>
 							</th>
-							<th scope="col" class="px-2.5 py-2 text-right">
-								<div class="flex gap-1.5 items-center justify-end">API请求</div>
+							<th
+								scope="col"
+								class="px-2.5 py-2 cursor-pointer select-none text-right"
+								on:click={() => toggleUserSort('request_count')}
+							>
+								<div class="flex gap-1.5 items-center justify-end">
+									API请求
+									{#if userOrderBy === 'request_count'}
+										{#if userDirection === 'asc'}<ChevronUp className="size-2" />{:else}<ChevronDown
+												className="size-2"
+											/>{/if}
+									{:else}
+										<span class="invisible"><ChevronUp className="size-2" /></span>
+									{/if}
+								</div>
 							</th>
-							<th scope="col" class="px-2.5 py-2 text-right">
-								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
+							<th
+								scope="col"
+								class="px-2.5 py-2 cursor-pointer select-none text-right"
+								on:click={() => toggleUserSort('total_tokens')}
+							>
+								<div class="flex gap-1.5 items-center justify-end">
+									Tokens
+									{#if userOrderBy === 'total_tokens'}
+										{#if userDirection === 'asc'}<ChevronUp className="size-2" />{:else}<ChevronDown
+												className="size-2"
+											/>{/if}
+									{:else}
+										<span class="invisible"><ChevronUp className="size-2" /></span>
+									{/if}
+								</div>
 							</th>
 							{#if showAnalyticsCosts}
 								<th scope="col" class="px-2.5 py-2 text-right">

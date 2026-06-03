@@ -221,6 +221,8 @@ async def get_admin_tokenfun_usage_users(
     end_timestamp: Optional[int] = None,
     external_user_id: Optional[str] = None,
     external_username: Optional[str] = None,
+    order_by: Optional[str] = None,
+    order_direction: Optional[str] = None,
     p: Optional[int] = None,
     page_size: Optional[int] = None,
     user=Depends(get_admin_user),
@@ -230,6 +232,8 @@ async def get_admin_tokenfun_usage_users(
         {
             'external_user_id': external_user_id,
             'external_username': external_username,
+            'order_by': order_by,
+            'order_direction': order_direction,
         }
     )
     return await _proxy_get(request, '/api/external-usage/users', params)
