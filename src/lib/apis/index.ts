@@ -1,5 +1,7 @@
 import { WEBUI_BASE_URL } from '$lib/constants';
+import type { Model } from '$lib/stores';
 import { convertOpenApiToToolPayload } from '$lib/utils';
+import { sortModelsByPreferredOrder } from '$lib/utils/models';
 import { getOpenAIModelsDirect } from './openai';
 
 const TOOL_SERVER_FETCH_TIMEOUT = 10000;
@@ -24,7 +26,7 @@ export const getModels = async (
 	connections: object | null = null,
 	base: boolean = false,
 	refresh: boolean = false
-) => {
+): Promise<Model[]> => {
 	const searchParams = new URLSearchParams();
 	if (refresh) {
 		searchParams.append('refresh', 'true');
@@ -56,10 +58,10 @@ export const getModels = async (
 		throw error;
 	}
 
-	let models = res?.data ?? [];
+	let models: any[] = res?.data ?? [];
 
 	if (connections && !base) {
-		let localModels = [];
+		let localModels: any[] = [];
 
 		if (connections) {
 			const OPENAI_API_BASE_URLS = connections.OPENAI_API_BASE_URLS;
@@ -131,24 +133,28 @@ export const getModels = async (
 				const response = responses[idx];
 				const apiConfig = OPENAI_API_CONFIGS[idx.toString()] ?? {};
 
-				let models = Array.isArray(response) ? response : (response?.data ?? []);
-				models = models.map((model) => ({ ...model, openai: { id: model.id }, urlIdx: idx }));
+				let connectionModels: any[] = Array.isArray(response) ? response : (response?.data ?? []);
+				connectionModels = connectionModels.map((model) => ({
+					...model,
+					openai: { id: model.id },
+					urlIdx: idx
+				}));
 
 				const prefixId = apiConfig.prefix_id;
 				if (prefixId) {
-					for (const model of models) {
+					for (const model of connectionModels) {
 						model.id = `${prefixId}.${model.id}`;
 					}
 				}
 
 				const tags = apiConfig.tags;
 				if (tags) {
-					for (const model of models) {
+					for (const model of connectionModels) {
 						model.tags = tags;
 					}
 				}
 
-				localModels = localModels.concat(models);
+				localModels = localModels.concat(connectionModels);
 			}
 		}
 
@@ -161,7 +167,7 @@ export const getModels = async (
 		);
 
 		// Remove duplicates
-		const modelsMap = {};
+		const modelsMap: Record<string, any> = {};
 		for (const model of models) {
 			modelsMap[model.id] = model;
 		}
@@ -169,7 +175,7 @@ export const getModels = async (
 		models = Object.values(modelsMap);
 	}
 
-	return models;
+	return sortModelsByPreferredOrder(models) as Model[];
 };
 
 export const unloadModel = async (token: string, model: string) => {
