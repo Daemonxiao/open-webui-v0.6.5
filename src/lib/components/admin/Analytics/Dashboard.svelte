@@ -10,7 +10,7 @@
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
-	import { formatNumber } from '$lib/utils';
+	import { decodeString, formatNumber } from '$lib/utils';
 
 	const maxRangeDays = 31;
 	const daySeconds = 86400;
@@ -144,11 +144,17 @@
 				getAdminTokenfunUsageUsers(localStorage.token, start, end, 1, 50)
 			]);
 			summary = summaryRes?.data ?? summary;
-			modelStats = (modelsRes?.data?.items ?? []).map((entry) => ({
+			modelStats = (modelsRes?.data?.items ?? []).map((entry: any) => ({
 				...entry,
 				name: modelsMap.get(entry.model_name) || entry.model_name
 			}));
-			userStats = usersRes?.data?.items ?? [];
+			userStats = (usersRes?.data?.items ?? []).map((entry: any) => ({
+				...entry,
+				_display_username: entry.external_username ? decodeString(entry.external_username) : '',
+				_display_user_email: entry.external_user_email
+					? decodeString(entry.external_user_email)
+					: ''
+			}));
 		} catch (err) {
 			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
 			summary = {
@@ -188,8 +194,8 @@
 
 	$: sortedUsers = [...userStats].sort((a, b) => {
 		if (userOrderBy === 'name') {
-			const nameA = a.external_username || a.external_user_email || a.external_user_id || '';
-			const nameB = b.external_username || b.external_user_email || b.external_user_id || '';
+			const nameA = a._display_username || a._display_user_email || a.external_user_id || '';
+			const nameB = b._display_username || b._display_user_email || b.external_user_id || '';
 			return userDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
 		}
 		if (userOrderBy === 'tokens') {
@@ -346,7 +352,7 @@
 											alt={model.name}
 											class="size-5 rounded-full object-cover shrink-0"
 											on:error={(e) => {
-												e.target.src = '/favicon.png';
+												(e.currentTarget as HTMLImageElement).src = '/favicon.png';
 											}}
 										/>
 										<span class="truncate max-w-[180px]">{model.name}</span>
@@ -420,21 +426,21 @@
 									<div class="flex items-center gap-2">
 										<img
 											src="{WEBUI_API_BASE_URL}/users/{item.external_user_id}/profile/image"
-											alt={item.external_username || 'User'}
+											alt={item._display_username || 'User'}
 											class="size-5 rounded-full object-cover shrink-0"
 											on:error={(e) => {
-												e.target.src = '/user.png';
+												(e.currentTarget as HTMLImageElement).src = '/user.png';
 											}}
 										/>
 										<span class="min-w-0">
 											<span class="block truncate max-w-[160px]"
-												>{item.external_username ||
-													item.external_user_email ||
+												>{item._display_username ||
+													item._display_user_email ||
 													item.external_user_id}</span
 											>
-											{#if item.external_user_email}
+											{#if item._display_user_email}
 												<span class="block truncate max-w-[160px] text-[11px] text-gray-400"
-													>{item.external_user_email}</span
+													>{item._display_user_email}</span
 												>
 											{/if}
 										</span>
