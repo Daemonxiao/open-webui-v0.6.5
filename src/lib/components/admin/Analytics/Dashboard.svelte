@@ -46,6 +46,7 @@
 	let modelStats: Array<any> = [];
 	let userStats: Array<any> = [];
 	let loading = true;
+	let usersLoading = false;
 	let tokenfunError = '';
 	let showAnalyticsCosts =
 		typeof localStorage !== 'undefined'
@@ -54,8 +55,9 @@
 
 	let modelOrderBy = 'count';
 	let modelDirection: 'asc' | 'desc' = 'desc';
-	let userOrderBy = 'requests';
-	let userDirection: 'asc' | 'desc' = 'desc';
+	let userPage = 1;
+	let userTotal = 0;
+	const userPageSize = 20;
 
 	const parseDate = (value: string) => {
 		const [year, month, day] = value.split('-').map((part) => Number(part));
@@ -96,14 +98,55 @@
 	const formatCost = (item: any) =>
 		item?.cost_display ?? `$${Number(item?.cost_usd ?? 0).toFixed(6)}`;
 
+	const mergeUserStatsById = (items: Array<any>) => {
+		const merged = new Map<string, any>();
+		for (const item of items) {
+			const userId = item.external_user_id || '';
+			if (!userId) {
+				continue;
+			}
+
+			const current = merged.get(userId);
+			if (!current) {
+				merged.set(userId, { ...item });
+				continue;
+			}
+
+			const latest =
+				Number(item.last_seen_at ?? 0) >= Number(current.last_seen_at ?? 0) ? item : current;
+			const costUsd = Number(current.cost_usd ?? 0) + Number(item.cost_usd ?? 0);
+
+			merged.set(userId, {
+				...current,
+				external_username: latest.external_username || current.external_username,
+				external_user_email: latest.external_user_email || current.external_user_email,
+				first_seen_at: Math.min(
+					Number(current.first_seen_at ?? item.first_seen_at ?? 0),
+					Number(item.first_seen_at ?? current.first_seen_at ?? 0)
+				),
+				last_seen_at: Math.max(
+					Number(current.last_seen_at ?? item.last_seen_at ?? 0),
+					Number(item.last_seen_at ?? current.last_seen_at ?? 0)
+				),
+				request_count: Number(current.request_count ?? 0) + Number(item.request_count ?? 0),
+				prompt_tokens: Number(current.prompt_tokens ?? 0) + Number(item.prompt_tokens ?? 0),
+				completion_tokens:
+					Number(current.completion_tokens ?? 0) + Number(item.completion_tokens ?? 0),
+				total_tokens: Number(current.total_tokens ?? 0) + Number(item.total_tokens ?? 0),
+				quota: Number(current.quota ?? 0) + Number(item.quota ?? 0),
+				cost_usd: costUsd,
+				cost_display: `$${costUsd.toFixed(6)}`
+			});
+		}
+
+		return [...merged.values()];
+	};
+
 	const loadCostVisibility = () => {
 		showAnalyticsCosts =
 			typeof localStorage !== 'undefined'
 				? localStorage.getItem(analyticsCostVisibilityStorageKey) === 'true'
 				: false;
-		if (!showAnalyticsCosts && userOrderBy === 'cost') {
-			userOrderBy = 'requests';
-		}
 	};
 
 	const compareNumber = (a: number, b: number, direction: 'asc' | 'desc') =>
@@ -118,12 +161,35 @@
 		}
 	};
 
-	const toggleUserSort = (key: string) => {
-		if (userOrderBy === key) {
-			userDirection = userDirection === 'asc' ? 'desc' : 'asc';
-		} else {
-			userOrderBy = key;
-			userDirection = key === 'name' ? 'asc' : 'desc';
+	const updateUserStats = (usersRes: any) => {
+		userTotal = Number(usersRes?.data?.total ?? 0);
+		userStats = mergeUserStatsById(usersRes?.data?.items ?? []).map((entry: any) => ({
+			...entry,
+			_display_username: entry.external_username ? decodeString(entry.external_username) : '',
+			_display_user_email: entry.external_user_email ? decodeString(entry.external_user_email) : ''
+		}));
+	};
+
+	const loadUserPage = async (page = userPage) => {
+		usersLoading = true;
+		tokenfunError = '';
+		try {
+			const { start, end } = getDateRange();
+			userPage = Math.max(1, page);
+			const usersRes = await getAdminTokenfunUsageUsers(
+				localStorage.token,
+				start,
+				end,
+				userPage,
+				userPageSize
+			);
+			updateUserStats(usersRes);
+		} catch (err) {
+			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
+			userStats = [];
+			userTotal = 0;
+		} finally {
+			usersLoading = false;
 		}
 	};
 
@@ -137,24 +203,19 @@
 				localStorage.setItem(endDateStorageKey, endDate);
 			}
 
+			userPage = 1;
 			const modelsMap = new Map($models.map((m) => [m.id, m.name || m.id]));
 			const [summaryRes, modelsRes, usersRes] = await Promise.all([
 				getAdminTokenfunUsageSummary(localStorage.token, start, end),
 				getAdminTokenfunUsageModels(localStorage.token, start, end, 1, 50),
-				getAdminTokenfunUsageUsers(localStorage.token, start, end, 1, 50)
+				getAdminTokenfunUsageUsers(localStorage.token, start, end, userPage, userPageSize)
 			]);
 			summary = summaryRes?.data ?? summary;
 			modelStats = (modelsRes?.data?.items ?? []).map((entry: any) => ({
 				...entry,
 				name: modelsMap.get(entry.model_name) || entry.model_name
 			}));
-			userStats = (usersRes?.data?.items ?? []).map((entry: any) => ({
-				...entry,
-				_display_username: entry.external_username ? decodeString(entry.external_username) : '',
-				_display_user_email: entry.external_user_email
-					? decodeString(entry.external_user_email)
-					: ''
-			}));
+			updateUserStats(usersRes);
 		} catch (err) {
 			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
 			summary = {
@@ -192,24 +253,11 @@
 		);
 	});
 
-	$: sortedUsers = [...userStats].sort((a, b) => {
-		if (userOrderBy === 'name') {
-			const nameA = a._display_username || a._display_user_email || a.external_user_id || '';
-			const nameB = b._display_username || b._display_user_email || b.external_user_id || '';
-			return userDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-		}
-		if (userOrderBy === 'tokens') {
-			return compareNumber(Number(a.total_tokens ?? 0), Number(b.total_tokens ?? 0), userDirection);
-		}
-		if (userOrderBy === 'requests') {
-			return compareNumber(
-				Number(a.request_count ?? 0),
-				Number(b.request_count ?? 0),
-				userDirection
-			);
-		}
-		return compareNumber(Number(a.cost_usd ?? 0), Number(b.cost_usd ?? 0), userDirection);
-	});
+	$: sortedUsers = userStats;
+
+	$: userPageCount = Math.max(1, Math.ceil(userTotal / userPageSize));
+	$: userStartIndex = userTotal === 0 ? 0 : (userPage - 1) * userPageSize + 1;
+	$: userEndIndex = Math.min(userPage * userPageSize, userTotal);
 
 	onMount(() => {
 		loadCostVisibility();
@@ -371,48 +419,44 @@
 		</div>
 
 		<div>
-			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">用户动态</div>
+			<div class="mb-1 flex items-center justify-between gap-2 px-0.5">
+				<div class="text-xs font-medium text-gray-700 dark:text-gray-300">用户动态</div>
+				<div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+					<span>{userStartIndex}-{userEndIndex} / {formatNumber(userTotal)}</span>
+					<button
+						type="button"
+						class="rounded-sm border border-gray-200 px-2 py-0.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-800"
+						disabled={usersLoading || userPage <= 1}
+						on:click={() => loadUserPage(userPage - 1)}
+					>
+						上一页
+					</button>
+					<button
+						type="button"
+						class="rounded-sm border border-gray-200 px-2 py-0.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-800"
+						disabled={usersLoading || userPage >= userPageCount}
+						on:click={() => loadUserPage(userPage + 1)}
+					>
+						下一页
+					</button>
+				</div>
+			</div>
 			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
 					<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
 						<tr class="border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
 							<th scope="col" class="px-2.5 py-2 w-8">#</th>
-							<th
-								scope="col"
-								class="px-2.5 py-2 cursor-pointer select-none"
-								on:click={() => toggleUserSort('name')}
-							>
-								<div class="flex gap-1.5 items-center">
-									用户
-									{#if userOrderBy === 'name'}
-										{#if userDirection === 'asc'}<ChevronUp className="size-2" />{:else}<ChevronDown
-												className="size-2"
-											/>{/if}
-									{:else}
-										<span class="invisible"><ChevronUp className="size-2" /></span>
-									{/if}
-								</div>
+							<th scope="col" class="px-2.5 py-2">
+								<div class="flex gap-1.5 items-center">用户</div>
 							</th>
-							<th
-								scope="col"
-								class="px-2.5 py-2 cursor-pointer select-none text-right"
-								on:click={() => toggleUserSort('requests')}
-							>
+							<th scope="col" class="px-2.5 py-2 text-right">
 								<div class="flex gap-1.5 items-center justify-end">API请求</div>
 							</th>
-							<th
-								scope="col"
-								class="px-2.5 py-2 cursor-pointer select-none text-right"
-								on:click={() => toggleUserSort('tokens')}
-							>
+							<th scope="col" class="px-2.5 py-2 text-right">
 								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
 							</th>
 							{#if showAnalyticsCosts}
-								<th
-									scope="col"
-									class="px-2.5 py-2 cursor-pointer select-none text-right"
-									on:click={() => toggleUserSort('cost')}
-								>
+								<th scope="col" class="px-2.5 py-2 text-right">
 									<div class="flex gap-1.5 items-center justify-end">费用</div>
 								</th>
 							{/if}
@@ -421,7 +465,7 @@
 					<tbody>
 						{#each sortedUsers as item, idx (item.external_user_id)}
 							<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
-								<td class="px-3 py-1 text-gray-400">{idx + 1}</td>
+								<td class="px-3 py-1 text-gray-400">{(userPage - 1) * userPageSize + idx + 1}</td>
 								<td class="px-3 py-1 font-medium text-gray-900 dark:text-white">
 									<div class="flex items-center gap-2">
 										<img
