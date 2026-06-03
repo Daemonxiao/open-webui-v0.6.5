@@ -117,6 +117,7 @@
 			case 'workspace':
 				return (
 					$user?.role === 'admin' ||
+					$user?.role === 'user' ||
 					$user?.permissions?.workspace?.models ||
 					$user?.permissions?.workspace?.knowledge ||
 					$user?.permissions?.workspace?.prompts ||

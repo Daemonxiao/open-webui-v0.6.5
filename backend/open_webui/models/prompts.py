@@ -249,11 +249,19 @@ class PromptsTable:
 
             return prompts
 
-    async def get_prompt_app_summaries(self, db: Optional[AsyncSession] = None) -> PromptAppSummaryListResponse:
+    async def get_prompt_app_summaries(
+        self,
+        user_id: Optional[str] = None,
+        user_role: str = 'user',
+        db: Optional[AsyncSession] = None,
+    ) -> PromptAppSummaryListResponse:
         async with get_async_db_context(db) as db:
-            result = await db.execute(
-                select(Prompt).filter(Prompt.is_active == True).order_by(Prompt.updated_at.desc())
-            )
+            query = select(Prompt).outerjoin(User, User.id == Prompt.user_id).filter(Prompt.is_active == True)
+            if user_role != 'admin':
+                query = query.filter(or_(Prompt.user_id == user_id, User.role == 'admin'))
+            query = query.order_by(Prompt.updated_at.desc())
+
+            result = await db.execute(query)
             prompts = result.scalars().all()
 
             user_ids = list({prompt.user_id for prompt in prompts})
@@ -280,6 +288,19 @@ class PromptsTable:
                 ],
                 total=len(prompts),
             )
+
+    async def can_user_use_prompt_app(
+        self,
+        prompt: PromptModel,
+        user_id: str,
+        user_role: str,
+        db: Optional[AsyncSession] = None,
+    ) -> bool:
+        if user_role == 'admin' or prompt.user_id == user_id:
+            return True
+
+        owner = await Users.get_user_by_id(prompt.user_id, db=db)
+        return bool(owner and owner.role == 'admin')
 
     async def get_prompts_by_user_id(
         self, user_id: str, permission: str = 'write', db: Optional[AsyncSession] = None
@@ -337,11 +358,14 @@ class PromptsTable:
         skip: int = 0,
         limit: int = 30,
         enforce_access_control: bool = True,
+        user_role: str = 'user',
         db: Optional[AsyncSession] = None,
     ) -> PromptListResponse:
         async with get_async_db_context(db) as db:
             # Join with User table for user filtering and sorting
             query = select(Prompt, User).outerjoin(User, User.id == Prompt.user_id)
+            if user_role != 'admin':
+                query = query.filter(Prompt.user_id == user_id)
 
             if filter:
                 query_key = filter.get('query')
@@ -718,10 +742,19 @@ class PromptsTable:
         except Exception:
             return False
 
-    async def get_tags(self, db: Optional[AsyncSession] = None) -> list[str]:
+    async def get_tags(
+        self,
+        user_id: Optional[str] = None,
+        user_role: str = 'admin',
+        db: Optional[AsyncSession] = None,
+    ) -> list[str]:
         try:
             async with get_async_db_context(db) as db:
-                result = await db.execute(select(Prompt.tags).filter(Prompt.is_active == True))
+                query = select(Prompt.tags).filter(Prompt.is_active == True)
+                if user_role != 'admin':
+                    query = query.filter(Prompt.user_id == user_id)
+
+                result = await db.execute(query)
                 tags = set()
                 for (tag_list,) in result.all():
                     if tag_list:

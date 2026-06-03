@@ -1803,6 +1803,11 @@ async def chat_completion(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=ERROR_MESSAGES.NOT_FOUND,
                 )
+            if not await Prompts.can_user_use_prompt_app(prompt_app, user.id, user.role):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+                )
 
             prompt_app_metadata = {
                 'prompt_app_id': prompt_app.id,

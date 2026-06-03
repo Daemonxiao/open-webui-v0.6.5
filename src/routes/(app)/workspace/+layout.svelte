@@ -15,26 +15,22 @@
 
 	let loaded = false;
 
-onMount(async () => {
-	const hiddenWorkspaceSections = [
-		'/workspace/models',
-		'/workspace/knowledge',
-		'/workspace/skills',
-		'/workspace/tools'
-	];
+	onMount(async () => {
+		const hiddenWorkspaceSections = [
+			'/workspace/models',
+			'/workspace/knowledge',
+			'/workspace/skills',
+			'/workspace/tools'
+		];
 
-	if (hiddenWorkspaceSections.some((section) => $page.url.pathname.includes(section))) {
-		goto($user?.role === 'admin' ? '/workspace/prompts' : '/');
+		if (hiddenWorkspaceSections.some((section) => $page.url.pathname.includes(section))) {
+			goto('/workspace/prompts');
+			loaded = true;
+			return;
+		}
+
 		loaded = true;
-		return;
-	}
-
-	if ($user?.role !== 'admin' && $page.url.pathname.includes('/prompts')) {
-		goto('/');
-	}
-
-	loaded = true;
-});
+	});
 </script>
 
 <svelte:head>
@@ -77,7 +73,7 @@ onMount(async () => {
 					<div
 						class="flex gap-1 scrollbar-none overflow-x-auto w-fit text-center text-sm font-medium rounded-full bg-transparent py-1 touch-auto pointer-events-auto"
 					>
-						{#if $user?.role === 'admin'}
+						{#if $user?.role === 'admin' || $user?.role === 'user'}
 							<a
 								draggable="false"
 								aria-current={$page.url.pathname.includes('/workspace/prompts') ? 'page' : null}

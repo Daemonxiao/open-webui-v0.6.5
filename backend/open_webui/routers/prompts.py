@@ -40,7 +40,9 @@ PAGE_ITEM_COUNT = 30
 
 
 def can_manage_prompt_app(user, prompt: PromptModel | None = None) -> bool:
-    return user.role == 'admin'
+    if user.role == 'admin':
+        return True
+    return bool(prompt and prompt.user_id == user.id)
 
 
 def ensure_can_manage_prompt_app(user, prompt: PromptModel | None = None):
@@ -78,13 +80,13 @@ async def get_prompts(user=Depends(get_admin_user), db: AsyncSession = Depends(g
 
 
 @router.get('/tags', response_model=list[str])
-async def get_prompt_tags(user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)):
-    return await Prompts.get_tags(db=db)
+async def get_prompt_tags(user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)):
+    return await Prompts.get_tags(user_id=user.id, user_role=user.role, db=db)
 
 
 @router.get('/apps', response_model=PromptAppSummaryListResponse)
 async def get_prompt_apps(user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)):
-    return await Prompts.get_prompt_app_summaries(db=db)
+    return await Prompts.get_prompt_app_summaries(user_id=user.id, user_role=user.role, db=db)
 
 
 @router.get('/admin/list', response_model=PromptAccessListResponse)
@@ -96,7 +98,7 @@ async def get_prompt_list(
     order_by: Optional[str] = None,
     direction: Optional[str] = None,
     page: Optional[int] = 1,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     limit = PAGE_ITEM_COUNT
@@ -116,14 +118,13 @@ async def get_prompt_list(
     if direction:
         filter['direction'] = direction
 
-    ensure_can_manage_prompt_app(user)
-
     result = await Prompts.search_prompts(
         user.id,
         filter=filter,
         skip=skip,
         limit=limit,
         enforce_access_control=False,
+        user_role=user.role,
         db=db,
     )
 
@@ -147,7 +148,7 @@ async def get_prompt_list(
 @router.post('/create', response_model=Optional[PromptModel])
 async def create_new_prompt(
     form_data: PromptForm,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     if not form_data.name.strip() or not (form_data.description or '').strip() or not form_data.content.strip():
@@ -174,11 +175,12 @@ async def create_new_prompt(
 
 @router.get('/command/{command}', response_model=Optional[PromptAccessResponse])
 async def get_prompt_by_command(
-    command: str, user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)
+    command: str, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
     prompt = await Prompts.get_prompt_by_command(command, db=db)
 
     if prompt:
+        ensure_can_manage_prompt_app(user, prompt)
         return PromptAccessResponse(**prompt.model_dump(), write_access=True)
 
     raise HTTPException(
@@ -194,11 +196,12 @@ async def get_prompt_by_command(
 
 @router.get('/id/{prompt_id}', response_model=Optional[PromptAccessResponse])
 async def get_prompt_by_id(
-    prompt_id: str, user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)
+    prompt_id: str, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
 
     if prompt:
+        ensure_can_manage_prompt_app(user, prompt)
         return PromptAccessResponse(**prompt.model_dump(), write_access=True)
 
     raise HTTPException(
@@ -216,7 +219,7 @@ async def get_prompt_by_id(
 async def update_prompt_by_id(
     prompt_id: str,
     form_data: PromptForm,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
@@ -264,7 +267,7 @@ async def update_prompt_by_id(
 async def update_prompt_metadata(
     prompt_id: str,
     form_data: PromptMetadataForm,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Update prompt name and command only (no history created)."""
@@ -303,7 +306,7 @@ async def update_prompt_metadata(
 async def set_prompt_version(
     prompt_id: str,
     form_data: PromptVersionUpdateForm,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
@@ -338,7 +341,7 @@ class PromptAccessGrantsForm(BaseModel):
 async def update_prompt_access_by_id(
     prompt_id: str,
     form_data: PromptAccessGrantsForm,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
@@ -362,7 +365,7 @@ async def update_prompt_access_by_id(
 
 @router.post('/id/{prompt_id}/toggle', response_model=Optional[PromptModel])
 async def toggle_prompt_active(
-    prompt_id: str, user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)
+    prompt_id: str, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
 
@@ -390,7 +393,7 @@ async def toggle_prompt_active(
 
 @router.delete('/id/{prompt_id}/delete', response_model=bool)
 async def delete_prompt_by_id(
-    prompt_id: str, user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)
+    prompt_id: str, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
     prompt = await Prompts.get_prompt_by_id(prompt_id, db=db)
 
@@ -415,7 +418,7 @@ async def delete_prompt_by_id(
 async def get_prompt_history(
     prompt_id: str,
     page: int = 0,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Get version history for a prompt."""
@@ -439,7 +442,7 @@ async def get_prompt_history(
 async def get_prompt_history_entry(
     prompt_id: str,
     history_id: str,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Get a specific version from history."""
@@ -467,7 +470,7 @@ async def get_prompt_history_entry(
 async def delete_prompt_history_entry(
     prompt_id: str,
     history_id: str,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Delete a history entry. Cannot delete the active production version."""
@@ -503,7 +506,7 @@ async def get_prompt_diff(
     prompt_id: str,
     from_id: str,
     to_id: str,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Get diff between two versions."""
