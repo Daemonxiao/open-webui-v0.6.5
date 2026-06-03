@@ -3,7 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { PaneGroup, Pane, PaneResizer } from 'paneforge';
 
-	import { getContext, onDestroy, onMount, tick } from 'svelte';
+	import { getContext, onMount, tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	const i18n: Writable<i18nType> = getContext('i18n');
 
@@ -174,6 +174,14 @@
 	};
 
 	let taskIds = null;
+	let messageReconcileTimer: ReturnType<typeof setInterval> | null = null;
+	let reconcileInFlight = false;
+	const reconcileTargets = new Map<string, string>();
+	const reconcileChunkTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+	const MESSAGE_RECONCILE_INTERVAL = 2500;
+	const MESSAGE_RECONCILE_CHUNK_SIZE = 420;
+	const MESSAGE_RECONCILE_CHUNK_DELAY = 90;
 
 	// Chat Input
 	let prompt = '';
@@ -199,6 +207,7 @@
 		}
 
 		clearTimeout(saveControlsTimer);
+		stopMessageReconcile();
 		await saveControls();
 		loading = true;
 
@@ -454,6 +463,164 @@
 		});
 	};
 
+	const getServerMessageFromChat = (chatData, messageId: string) => {
+		return chatData?.chat?.history?.messages?.[messageId] ?? null;
+	};
+
+	const clearMessageReconcileChunkTimer = (messageId: string) => {
+		const timer = reconcileChunkTimers.get(messageId);
+		if (timer) {
+			clearTimeout(timer);
+			reconcileChunkTimers.delete(messageId);
+		}
+	};
+
+	const applyServerMessageMetadata = (message, serverMessage) => {
+		if (serverMessage?.output && !equal(message.output, serverMessage.output)) {
+			message.output = serverMessage.output;
+		}
+		if (serverMessage?.usage) {
+			message.usage = serverMessage.usage;
+		}
+		if (serverMessage?.sources && !message.sources) {
+			message.sources = serverMessage.sources;
+		}
+		if (serverMessage?.done === true) {
+			message.done = true;
+		}
+	};
+
+	const animateMessageContentToServer = (
+		messageId: string,
+		serverContent: string,
+		serverMessage
+	) => {
+		reconcileTargets.set(messageId, serverContent);
+		clearMessageReconcileChunkTimer(messageId);
+
+		const step = async () => {
+			const message = history.messages[messageId];
+			const target = reconcileTargets.get(messageId);
+
+			if (!message || target !== serverContent || typeof message.content !== 'string') {
+				return;
+			}
+
+			if (!serverContent.startsWith(message.content)) {
+				reconcileTargets.delete(messageId);
+				return;
+			}
+
+			const remaining = serverContent.slice(message.content.length);
+			if (!remaining) {
+				applyServerMessageMetadata(message, serverMessage);
+				history.messages[messageId] = message;
+				history = history;
+				reconcileTargets.delete(messageId);
+				return;
+			}
+
+			message.content += remaining.slice(0, MESSAGE_RECONCILE_CHUNK_SIZE);
+			history.messages[messageId] = message;
+			history = history;
+			await tick();
+
+			if (autoScroll) {
+				scheduleScrollToBottom();
+			}
+
+			const timer = setTimeout(step, MESSAGE_RECONCILE_CHUNK_DELAY);
+			reconcileChunkTimers.set(messageId, timer);
+		};
+
+		step();
+	};
+
+	const reconcileMessageFromServer = async (
+		_chatId: string,
+		messageId: string,
+		{ final = false }: { final?: boolean } = {}
+	) => {
+		if (!_chatId || _chatId.startsWith('local:') || _chatId.startsWith('channel:')) {
+			return;
+		}
+
+		const localMessage = history.messages[messageId];
+		if (!localMessage || localMessage.role !== 'assistant') {
+			return;
+		}
+
+		const latestChat = await getChatById(localStorage.token, _chatId).catch(() => null);
+		if (!latestChat || _chatId !== $chatId) {
+			return;
+		}
+
+		const serverMessage = getServerMessageFromChat(latestChat, messageId);
+		const serverContent = serverMessage?.content;
+		const localContent = localMessage?.content;
+
+		if (typeof serverContent !== 'string' || typeof localContent !== 'string') {
+			return;
+		}
+
+		chat = latestChat;
+
+		if (serverContent.length > localContent.length && serverContent.startsWith(localContent)) {
+			animateMessageContentToServer(messageId, serverContent, serverMessage);
+			return;
+		}
+
+		if (final && serverContent === localContent) {
+			applyServerMessageMetadata(localMessage, serverMessage);
+			history.messages[messageId] = localMessage;
+			history = history;
+		}
+	};
+
+	const stopMessageReconcile = ({ clearChunks = true }: { clearChunks?: boolean } = {}) => {
+		if (messageReconcileTimer) {
+			clearInterval(messageReconcileTimer);
+			messageReconcileTimer = null;
+		}
+		if (clearChunks) {
+			for (const timer of reconcileChunkTimers.values()) {
+				clearTimeout(timer);
+			}
+			reconcileChunkTimers.clear();
+			reconcileTargets.clear();
+		}
+		reconcileInFlight = false;
+	};
+
+	const startMessageReconcile = (_chatId: string, messageId: string) => {
+		if (!_chatId || _chatId.startsWith('local:') || _chatId.startsWith('channel:')) {
+			return;
+		}
+
+		if (messageReconcileTimer) {
+			clearInterval(messageReconcileTimer);
+		}
+
+		messageReconcileTimer = setInterval(async () => {
+			const message = history.messages[messageId];
+			if (!message || message.done === true || _chatId !== $chatId) {
+				stopMessageReconcile({ clearChunks: false });
+				return;
+			}
+
+			if (reconcileInFlight) {
+				return;
+			}
+
+			reconcileInFlight = true;
+			try {
+				await reconcileMessageFromServer(_chatId, messageId);
+			} finally {
+				reconcileInFlight = false;
+			}
+		}, MESSAGE_RECONCILE_INTERVAL);
+	};
+
 	const terminalEventHandler = (type: string, data: any) => {
 		if (type === 'terminal:display_file') {
 			if (!data?.path) return;
@@ -484,7 +651,7 @@
 						message.statusHistory = [data];
 					}
 				} else if (type === 'chat:completion') {
-					chatCompletionEventHandler(data, message, event.chat_id);
+					await chatCompletionEventHandler(data, message, event.chat_id);
 				} else if (type === 'chat:tasks:cancel') {
 					if (event.message_id === history.currentId) {
 						taskIds = null;
@@ -841,6 +1008,7 @@
 		return () => {
 			try {
 				clearTimeout(saveControlsTimer);
+				stopMessageReconcile();
 				saveControls();
 				if (chatIdProp && !$temporaryChatEnabled) {
 					updateLastReadAt(chatIdProp);
@@ -1841,6 +2009,8 @@
 
 		if (done) {
 			message.done = true;
+			stopMessageReconcile({ clearChunks: false });
+			await reconcileMessageFromServer(chatId, message.id, { final: true });
 
 			if ($settings.responseAutoCopy) {
 				copyToClipboard(message.content);
@@ -2414,6 +2584,10 @@
 		// Only send terminal_id if the model has terminal capability enabled
 		const terminalEnabled = model.info?.meta?.capabilities?.terminal ?? true;
 
+		if (_chatId) {
+			startMessageReconcile(_chatId, responseMessageId);
+		}
+
 		const res = await generateOpenAIChatCompletion(
 			localStorage.token,
 			{
@@ -2527,6 +2701,7 @@
 				// and causing spurious toast notifications / state duplication).
 				if (res.chat_id && $chatId !== res.chat_id && $chatId === _chatId) {
 					await chatId.set(res.chat_id);
+					startMessageReconcile(res.chat_id, responseMessageId);
 					if (!$temporaryChatEnabled) {
 						window.history.replaceState(history.state, '', `/c/${res.chat_id}`);
 						currentChatPage.set(1);
