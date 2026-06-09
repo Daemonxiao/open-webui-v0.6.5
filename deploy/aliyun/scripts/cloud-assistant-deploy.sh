@@ -223,6 +223,7 @@ main() {
     printf 'TOKENFUN_USAGE_ENABLED=True\n'
     printf 'TOKENFUN_USAGE_API_BASE_URL=%s\n' "$tokenfun_usage_api_base_url"
     printf 'TOKENFUN_USAGE_SOURCE=open_webui\n'
+    printf 'ENABLE_PUBLIC_ACTIVE_USERS_COUNT=False\n'
   } >> "$env_open_webui"
   if [ -n "$tokenfun_usage_admin_key" ]; then
     printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key" >> "$env_open_webui"
