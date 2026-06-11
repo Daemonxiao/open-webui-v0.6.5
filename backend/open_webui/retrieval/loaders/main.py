@@ -147,7 +147,7 @@ class TikaLoader:
         with open(self.file_path, 'rb') as f:
             data = f.read()
 
-        headers = {'Accept': 'text/plain'}
+        headers = {'Accept': 'application/json'}
         if self.mime_type is not None:
             headers['Content-Type'] = self.mime_type
 
@@ -162,10 +162,16 @@ class TikaLoader:
         r = requests.put(endpoint, data=data, headers=headers, verify=REQUESTS_VERIFY)
 
         if r.ok:
-            text = r.text.strip()
+            raw_metadata = r.json()
+            text = raw_metadata.get('X-TIKA:content', '<No text content found>').strip()
             log.debug('Tika extracted text: %s', text)
 
-            return [Document(page_content=text, metadata=headers)]
+            metadata = {}
+            content_type = raw_metadata.get('Content-Type', self.mime_type)
+            if content_type:
+                metadata['Content-Type'] = content_type
+
+            return [Document(page_content=text, metadata=metadata)]
         else:
             raise Exception(f'Error calling Tika: {r.reason}')
 
@@ -256,6 +262,10 @@ class Loader:
 
     def _get_loader(self, filename: str, file_content_type: str, file_path: str):
         file_ext = filename.split('.')[-1].lower()
+        is_docx = (
+            file_ext == 'docx'
+            or file_content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
 
         if (
             self.engine == 'external'
@@ -273,7 +283,7 @@ class Loader:
             self.engine == 'tika'
             and self.kwargs.get('TIKA_SERVER_URL')
             and not self._is_text_file(file_ext, file_content_type)
-            and file_ext != 'docx'
+            and not is_docx
         ):
             loader = TikaLoader(
                 url=self.kwargs.get('TIKA_SERVER_URL'),

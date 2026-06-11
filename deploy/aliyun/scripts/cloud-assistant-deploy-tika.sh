@@ -131,6 +131,36 @@ wait_for_command() {
   return 1
 }
 
+wait_for_send_file() {
+  local invoke_id="$1"
+  local attempts="${2:-60}"
+  local result
+  local status
+  local error_info
+
+  for _ in $(seq 1 "$attempts"); do
+    result="$(aliyun ecs DescribeSendFileResults --RegionId "$ALIYUN_REGION" --InvokeId "$invoke_id")"
+    status="$(jq -r 'first(.. | objects | select(has("InvocationStatus")) | .InvocationStatus) // empty' <<< "$result")"
+    error_info="$(jq -r 'first(.. | objects | select(has("ErrorInfo")) | .ErrorInfo) // empty' <<< "$result")"
+
+    case "$status" in
+      Success)
+        return 0
+        ;;
+      Failed|PartialFailed|Invalid|Aborted|Timeout|Error)
+        echo "Cloud Assistant file transfer failed with status $status${error_info:+: $error_info}" >&2
+        return 1
+        ;;
+      *)
+        sleep 5
+        ;;
+    esac
+  done
+
+  echo "Timed out waiting for Cloud Assistant file transfer $invoke_id." >&2
+  return 1
+}
+
 main() {
   required_env ALIYUN_REGION
   required_env ECS_INSTANCE_ID
@@ -196,7 +226,7 @@ main() {
     echo "SendFile did not return InvokeId: $response" >&2
     return 1
   fi
-  wait_for_command "$invoke_id" 60
+  wait_for_send_file "$invoke_id" 60
 
   response="$(aliyun ecs RunCommand \
     --RegionId "$ALIYUN_REGION" \
