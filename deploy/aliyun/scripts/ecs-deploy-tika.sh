@@ -49,6 +49,12 @@ start_container_runtime() {
   docker version >/dev/null
 }
 
+ensure_container_restart_service() {
+  if command -v systemctl >/dev/null 2>&1 && docker version 2>&1 | grep -qi podman; then
+    systemctl enable --now podman-restart.service >/dev/null 2>&1 || true
+  fi
+}
+
 ensure_network() {
   docker network inspect "$TIKA_NETWORK" >/dev/null 2>&1 || docker network create "$TIKA_NETWORK"
 }
@@ -78,6 +84,12 @@ wait_for_tika() {
 
     container_ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$TIKA_NETWORK\"}}{{.IPAddress}}{{end}}" "$TIKA_CONTAINER_NAME")"
     if [ -n "$container_ip" ] && curl --silent --fail "http://${container_ip}:9998/tika" >/dev/null; then
+      if docker inspect open-webui-hai >/dev/null 2>&1; then
+        if ! docker exec open-webui-hai curl --silent --fail http://tika:9998/tika >/dev/null; then
+          sleep "$TIKA_HEALTH_CHECK_DELAY_SECONDS"
+          continue
+        fi
+      fi
       docker ps --filter "name=${TIKA_CONTAINER_NAME}"
       return 0
     fi
@@ -93,10 +105,11 @@ main() {
   required_env TIKA_IMAGE
   install_container_runtime
   start_container_runtime
+  ensure_container_restart_service
   ensure_network
 
   local previous_image
-  previous_image="$(docker inspect -f '{{.Config.Image}}' "$TIKA_CONTAINER_NAME" 2>/dev/null || true)"
+  previous_image="$(docker inspect -f '{{.Image}}' "$TIKA_CONTAINER_NAME" 2>/dev/null || true)"
 
   docker pull "$TIKA_IMAGE"
   docker rm -f "$TIKA_CONTAINER_NAME" >/dev/null 2>&1 || true
