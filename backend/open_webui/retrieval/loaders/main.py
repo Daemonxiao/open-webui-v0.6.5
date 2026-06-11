@@ -147,10 +147,9 @@ class TikaLoader:
         with open(self.file_path, 'rb') as f:
             data = f.read()
 
+        headers = {'Accept': 'text/plain'}
         if self.mime_type is not None:
-            headers = {'Content-Type': self.mime_type}
-        else:
-            headers = {}
+            headers['Content-Type'] = self.mime_type
 
         if self.extract_images == True:
             headers['X-Tika-PDFextractInlineImages'] = 'true'
@@ -163,12 +162,7 @@ class TikaLoader:
         r = requests.put(endpoint, data=data, headers=headers, verify=REQUESTS_VERIFY)
 
         if r.ok:
-            raw_metadata = r.json()
-            text = raw_metadata.get('X-TIKA:content', '<No text content found>').strip()
-
-            if 'Content-Type' in raw_metadata:
-                headers['Content-Type'] = raw_metadata['Content-Type']
-
+            text = r.text.strip()
             log.debug('Tika extracted text: %s', text)
 
             return [Document(page_content=text, metadata=headers)]
@@ -275,15 +269,18 @@ class Loader:
                 mime_type=file_content_type,
                 user=self.user,
             )
-        elif self.engine == 'tika' and self.kwargs.get('TIKA_SERVER_URL'):
-            if self._is_text_file(file_ext, file_content_type):
-                loader = TextLoader(file_path, autodetect_encoding=True)
-            else:
-                loader = TikaLoader(
-                    url=self.kwargs.get('TIKA_SERVER_URL'),
-                    file_path=file_path,
-                    extract_images=self.kwargs.get('PDF_EXTRACT_IMAGES'),
-                )
+        elif (
+            self.engine == 'tika'
+            and self.kwargs.get('TIKA_SERVER_URL')
+            and not self._is_text_file(file_ext, file_content_type)
+            and file_ext != 'docx'
+        ):
+            loader = TikaLoader(
+                url=self.kwargs.get('TIKA_SERVER_URL'),
+                file_path=file_path,
+                mime_type=file_content_type,
+                extract_images=self.kwargs.get('PDF_EXTRACT_IMAGES'),
+            )
         elif (
             self.engine == 'datalab_marker'
             and self.kwargs.get('DATALAB_MARKER_API_KEY')

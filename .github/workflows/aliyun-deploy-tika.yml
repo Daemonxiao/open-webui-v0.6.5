@@ -1,0 +1,142 @@
+name: Deploy Tika to Alibaba Cloud
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
+  ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
+  TIKA_SOURCE_IMAGE: ${{ vars.TIKA_SOURCE_IMAGE || 'apache/tika:3.3.0.0-full' }}
+  TIKA_MEMORY: ${{ vars.TIKA_MEMORY || '1536m' }}
+  TIKA_CPUS: ${{ vars.TIKA_CPUS || '1.0' }}
+  TIKA_JAVA_OPTS: ${{ vars.TIKA_JAVA_OPTS || '-Xms256m -Xmx1024m' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
+
+jobs:
+  mirror:
+    name: Mirror Tika image to ACR
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    env:
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Validate image settings
+        run: |
+          test -n "$ACR_NAMESPACE"
+          test -n "$TIKA_SOURCE_IMAGE"
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          if [ -n "$ACR_USERNAME" ] || [ -n "$ACR_PASSWORD" ]; then
+            test -n "$ACR_USERNAME"
+            test -n "$ACR_PASSWORD"
+          fi
+
+      - name: Set Tika image
+        id: image
+        run: |
+          source_tag="${TIKA_SOURCE_IMAGE##*:}"
+          if [ "$source_tag" = "$TIKA_SOURCE_IMAGE" ]; then
+            source_tag="latest"
+          fi
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:tika-${source_tag}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "TIKA_MIRROR_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Login to Alibaba Cloud ACR with password
+        if: env.ACR_USERNAME != '' && env.ACR_PASSWORD != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: Login to Alibaba Cloud ACR
+        if: env.ACR_USERNAME == '' && env.ACR_PASSWORD == '' && env.ACR_INSTANCE_ID == ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Login to Alibaba Cloud ACR Enterprise
+        if: env.ACR_USERNAME == '' && env.ACR_PASSWORD == '' && env.ACR_INSTANCE_ID != ''
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: ${{ env.ALIYUN_REGION }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          instance-id: ${{ env.ACR_INSTANCE_ID }}
+
+      - name: Mirror Tika image
+        run: |
+          docker pull "$TIKA_SOURCE_IMAGE"
+          docker tag "$TIKA_SOURCE_IMAGE" "$TIKA_MIRROR_IMAGE"
+          docker push "$TIKA_MIRROR_IMAGE"
+
+  deploy:
+    name: Deploy Tika
+    runs-on: ubuntu-latest
+    environment: aliyun-hai
+    needs: mirror
+    env:
+      TIKA_IMAGE: ${{ needs.mirror.outputs.image }}
+      ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deploy settings
+        run: |
+          test -n "$ALICLOUD_ACCESS_KEY"
+          test -n "$ALICLOUD_SECRET_KEY"
+          test -n "$TF_STATE_BUCKET"
+          test -n "$TIKA_IMAGE"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install Alibaba Cloud CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -fsSL https://aliyuncli.alicdn.com/install.sh | sudo bash
+          aliyun configure set \
+            --mode AK \
+            --region "$ALIYUN_REGION" \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+
+      - name: Read Terraform outputs
+        run: |
+          terraform -chdir=infra/aliyun init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=open-webui/hai/terraform.tfstate" \
+            -backend-config="region=$ALIYUN_REGION" \
+            -backend-config="tablestore_endpoint=https://${TF_LOCK_INSTANCE}.${ALIYUN_REGION}.ots.aliyuncs.com" \
+            -backend-config="tablestore_table=$TF_LOCK_TABLE"
+          echo "ECS_INSTANCE_ID=$(terraform -chdir=infra/aliyun output -raw instance_id)" >> "$GITHUB_ENV"
+
+      - name: Deploy Tika through ECS Cloud Assistant
+        run: bash deploy/aliyun/scripts/cloud-assistant-deploy-tika.sh
