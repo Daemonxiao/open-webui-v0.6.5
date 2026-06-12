@@ -205,6 +205,27 @@
 			].some((value) => Number(value) > 0))
 			? latestStatus
 			: null;
+	const hasNonReasoningContent = (content: string) => {
+		const trimmed = content.trim();
+		if (!trimmed) return false;
+		if (!trimmed.startsWith('<details type="reasoning"')) return true;
+
+		return (
+			trimmed.replace(/<details type="reasoning"[^>]*>[\s\S]*?<\/details>/g, '').trim().length > 0
+		);
+	};
+	$: hasAssistantAnswer =
+		Array.isArray(message?.output) && message.output.length > 0
+			? message.output.some(
+					(item) =>
+						item?.type === 'message' &&
+						item?.content?.some(
+							(part) => part?.type === 'output_text' && (part?.text ?? '').trim().length > 0
+						)
+				)
+			: hasNonReasoningContent(message.content);
+	$: showWaiting =
+		!message.done && !message.error && !hasAssistantAnswer && (!hasVisibleStatus || retryStatus);
 
 	let edit = false;
 	let editedContent = '';
@@ -856,9 +877,11 @@
 							class="w-full flex flex-col relative {edit ? 'hidden' : ''}"
 							id="response-content-container"
 						>
-							{#if message.content === '' && !message.done && !message.error && (!hasVisibleStatus || retryStatus)}
+							{#if showWaiting}
 								<Skeleton status={retryStatus} />
-							{:else if message.content && message.error !== true}
+							{/if}
+
+							{#if message.content && message.error !== true}
 								<!-- always show message contents even if there's an error -->
 								<!-- unless message.error === true which is legacy error handling, where the error message is stored in message.content -->
 								<ContentRenderer
