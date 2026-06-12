@@ -2659,18 +2659,6 @@
 		).catch(async (error) => {
 			console.log(error);
 
-			let errorMessage = error;
-			if (error?.error?.message) {
-				errorMessage = error.error.message;
-			} else if (error?.message) {
-				errorMessage = error.message;
-			}
-
-			if (typeof errorMessage === 'object') {
-				errorMessage = $i18n.t(`Uh-oh! There was an issue with the response.`);
-			}
-
-			toast.error(`${errorMessage}`);
 			responseMessage.error = {
 				content: error
 			};
@@ -2734,27 +2722,42 @@
 		}
 
 		console.error(innerError);
-		if ('detail' in innerError) {
+		if (innerError && typeof innerError === 'object' && 'detail' in innerError) {
 			// FastAPI error
-			toast.error(innerError.detail);
 			errorMessage = innerError.detail;
-		} else if ('error' in innerError) {
+		} else if (innerError && typeof innerError === 'object' && 'error' in innerError) {
 			// OpenAI error
-			if ('message' in innerError.error) {
-				toast.error(innerError.error.message);
+			if (
+				innerError.error &&
+				typeof innerError.error === 'object' &&
+				'message' in innerError.error
+			) {
 				errorMessage = innerError.error.message;
 			} else {
-				toast.error(innerError.error);
 				errorMessage = innerError.error;
 			}
-		} else if ('message' in innerError) {
+		} else if (innerError && typeof innerError === 'object' && 'message' in innerError) {
 			// OpenAI error
-			toast.error(innerError.message);
 			errorMessage = innerError.message;
+		} else if (typeof innerError === 'string') {
+			errorMessage = innerError;
 		}
 
+		const structuredError =
+			innerError?.error && typeof innerError.error === 'object'
+				? innerError.error
+				: innerError?.detail && typeof innerError.detail === 'object'
+					? innerError.detail
+					: innerError && typeof innerError === 'object'
+						? innerError
+						: {};
+
 		responseMessage.error = {
-			content: $i18n.t(`Uh-oh! There was an issue with the response.`) + '\n' + errorMessage
+			...structuredError,
+			content:
+				typeof errorMessage === 'string' && errorMessage
+					? errorMessage
+					: structuredError?.message || structuredError?.detail || innerError
 		};
 		responseMessage.done = true;
 
