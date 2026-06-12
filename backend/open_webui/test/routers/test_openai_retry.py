@@ -46,6 +46,7 @@ def test_stream_retries_before_first_usable_data_and_closes_failed_response(monk
         second = FakeResponse(chunks=[b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'])
         responses = iter([second])
         sleeps = []
+        retry_statuses = []
 
         async def request_factory():
             return next(responses)
@@ -53,14 +54,24 @@ def test_stream_retries_before_first_usable_data_and_closes_failed_response(monk
         async def fake_sleep(retry_count):
             sleeps.append(retry_count)
 
+        async def capture_retry_status(retry_count):
+            retry_statuses.append(retry_count)
+
         monkeypatch.setattr('open_webui.routers.openai._retry_backoff', fake_sleep)
-        chunks = [chunk async for chunk in _retrying_chat_stream(first, request_factory)]
+        chunks = [
+            chunk
+            async for chunk in _retrying_chat_stream(
+                first,
+                request_factory,
+                retry_status_callback=capture_retry_status,
+            )
+        ]
 
         assert first.closed
         assert second.closed
         assert sleeps == [1]
-        assert '"description": "Retrying upstream model (retry 1/3)"' in chunks[0]
-        assert chunks[1] == b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+        assert retry_statuses == [1]
+        assert chunks == [b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n']
 
     asyncio.run(run())
 
@@ -192,6 +203,7 @@ def test_stream_closes_retryable_http_error_before_next_attempt(monkeypatch):
         overloaded = FakeResponse(status=503)
         success = FakeResponse(chunks=[b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'])
         response_iter = iter([overloaded, success])
+        retry_statuses = []
 
         async def request_factory():
             return next(response_iter)
@@ -199,11 +211,40 @@ def test_stream_closes_retryable_http_error_before_next_attempt(monkeypatch):
         async def fake_sleep(_retry_count):
             return None
 
+        async def capture_retry_status(retry_count):
+            retry_statuses.append(retry_count)
+
+        monkeypatch.setattr('open_webui.routers.openai._retry_backoff', fake_sleep)
+        chunks = [
+            chunk
+            async for chunk in _retrying_chat_stream(
+                first,
+                request_factory,
+                retry_status_callback=capture_retry_status,
+            )
+        ]
+
+        assert overloaded.closed
+        assert retry_statuses == [1, 2]
+        assert chunks == [b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n']
+
+    asyncio.run(run())
+
+
+def test_external_stream_does_not_receive_private_retry_status(monkeypatch):
+    async def run():
+        first = FakeResponse(error=ConnectionError('disconnected'))
+        success = FakeResponse(chunks=[b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'])
+
+        async def request_factory():
+            return success
+
+        async def fake_sleep(_retry_count):
+            return None
+
         monkeypatch.setattr('open_webui.routers.openai._retry_backoff', fake_sleep)
         chunks = [chunk async for chunk in _retrying_chat_stream(first, request_factory)]
 
-        assert overloaded.closed
-        assert sum('"type": "status"' in chunk for chunk in chunks if isinstance(chunk, str)) == 2
-        assert chunks[-1] == b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+        assert chunks == [b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n']
 
     asyncio.run(run())

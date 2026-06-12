@@ -238,6 +238,7 @@ async def _retrying_chat_stream(
     request_factory,
     retry_count: int = 0,
     content_handler=None,
+    retry_status_callback=None,
 ):
     """Retry only before the first usable SSE event to avoid duplicate output."""
     current_response = response
@@ -290,7 +291,8 @@ async def _retrying_chat_stream(
 
         while retry_count < _CHAT_COMPLETION_MAX_RETRIES:
             retry_count += 1
-            yield f'data: {json.dumps({"event": _retry_status_event(retry_count)})}\n\n'
+            if retry_status_callback:
+                await retry_status_callback(retry_count)
             await _retry_backoff(retry_count)
 
             try:
@@ -1540,6 +1542,7 @@ async def generate_chat_completion(
                     request_upstream,
                     retry_count=retry_count,
                     content_handler=stream_chunks_handler,
+                    retry_status_callback=lambda count: _emit_retry_status(request, count),
                 ),
                 status_code=r.status,
                 headers=_clean_proxy_headers(r.headers),
