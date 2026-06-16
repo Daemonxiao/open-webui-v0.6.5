@@ -62,6 +62,7 @@
 	let userPage = 1;
 	let userTotal = 0;
 	const userPageSize = 20;
+	const exportModelPageSize = 100;
 	const exportUserPageSize = 100;
 
 	const parseDate = (value: string) => {
@@ -133,6 +134,37 @@
 					Number(current.last_seen_at ?? item.last_seen_at ?? 0),
 					Number(item.last_seen_at ?? current.last_seen_at ?? 0)
 				),
+				request_count: Number(current.request_count ?? 0) + Number(item.request_count ?? 0),
+				prompt_tokens: Number(current.prompt_tokens ?? 0) + Number(item.prompt_tokens ?? 0),
+				completion_tokens:
+					Number(current.completion_tokens ?? 0) + Number(item.completion_tokens ?? 0),
+				total_tokens: Number(current.total_tokens ?? 0) + Number(item.total_tokens ?? 0),
+				quota: Number(current.quota ?? 0) + Number(item.quota ?? 0),
+				cost_usd: costUsd,
+				cost_display: `$${costUsd.toFixed(6)}`
+			});
+		}
+
+		return [...merged.values()];
+	};
+
+	const mergeModelStatsByName = (items: Array<any>) => {
+		const merged = new Map<string, any>();
+		for (const item of items) {
+			const modelName = item.model_name || '';
+			if (!modelName) {
+				continue;
+			}
+
+			const current = merged.get(modelName);
+			if (!current) {
+				merged.set(modelName, { ...item });
+				continue;
+			}
+
+			const costUsd = Number(current.cost_usd ?? 0) + Number(item.cost_usd ?? 0);
+			merged.set(modelName, {
+				...current,
 				request_count: Number(current.request_count ?? 0) + Number(item.request_count ?? 0),
 				prompt_tokens: Number(current.prompt_tokens ?? 0) + Number(item.prompt_tokens ?? 0),
 				completion_tokens:
@@ -225,8 +257,61 @@
 		return rows;
 	};
 
+	const sortModelStats = (items: Array<any>) =>
+		[...items].sort((a, b) => {
+			if (modelOrderBy === 'name') {
+				const nameA = a.name || a.model_name;
+				const nameB = b.name || b.model_name;
+				return modelDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+			}
+			if (modelOrderBy === 'tokens') {
+				return compareNumber(
+					Number(a.total_tokens ?? 0),
+					Number(b.total_tokens ?? 0),
+					modelDirection
+				);
+			}
+			if (modelOrderBy === 'cost') {
+				return compareNumber(Number(a.cost_usd ?? 0), Number(b.cost_usd ?? 0), modelDirection);
+			}
+			return compareNumber(
+				Number(a.request_count ?? 0),
+				Number(b.request_count ?? 0),
+				modelDirection
+			);
+		});
+
+	const loadAllModelStatsForExport = async (start: number, end: number) => {
+		const modelsMap = new Map($models.map((m) => [m.id, m.name || m.id]));
+		const allItems = [];
+		let page = 1;
+
+		while (true) {
+			const res = await getAdminTokenfunUsageModels(
+				localStorage.token,
+				start,
+				end,
+				page,
+				exportModelPageSize
+			);
+			const currentItems = res?.data?.items ?? [];
+			allItems.push(...currentItems);
+			if (currentItems.length < exportModelPageSize) {
+				break;
+			}
+			page += 1;
+		}
+
+		return sortModelStats(
+			mergeModelStatsByName(allItems).map((entry: any) => ({
+				...entry,
+				name: modelsMap.get(entry.model_name) || entry.model_name
+			}))
+		);
+	};
+
 	const loadAllUserStatsForExport = async (start: number, end: number) => {
-		const merged = new Map<string, any>();
+		const allItems = [];
 		let page = 1;
 
 		while (true) {
@@ -241,24 +326,19 @@
 				userOrderBy,
 				userDirection
 			);
-			const items = mergeUserStatsById(res?.data?.items ?? []).map((entry: any) => ({
-				...entry,
-				_display_username: entry.external_username ? decodeString(entry.external_username) : '',
-				_display_user_email: entry.external_user_email
-					? decodeString(entry.external_user_email)
-					: ''
-			}));
-			for (const item of items) {
-				merged.set(item.external_user_id, item);
-			}
 			const currentItems = res?.data?.items ?? [];
+			allItems.push(...currentItems);
 			if (currentItems.length < exportUserPageSize) {
 				break;
 			}
 			page += 1;
 		}
 
-		const allUsers = [...merged.values()];
+		const allUsers = mergeUserStatsById(allItems).map((entry: any) => ({
+			...entry,
+			_display_username: entry.external_username ? decodeString(entry.external_username) : '',
+			_display_user_email: entry.external_user_email ? decodeString(entry.external_user_email) : ''
+		}));
 		if (allUsers.length > 0) {
 			try {
 				const countsRes = await getUserChatCounts(localStorage.token, start, end);
@@ -283,11 +363,20 @@
 		}));
 	};
 
-	const downloadModelCsv = () => {
-		downloadCsvFile(
-			`analytics-model-usage-${startDate}-${endDate}.csv`,
-			buildModelCsvRows(sortedModels)
-		);
+	const downloadModelCsv = async () => {
+		const { start, end } = getDateRange();
+		csvLoading = 'models';
+		try {
+			const allModels = await loadAllModelStatsForExport(start, end);
+			downloadCsvFile(
+				`analytics-model-usage-${startDate}-${endDate}.csv`,
+				buildModelCsvRows(allModels)
+			);
+		} catch (err) {
+			console.error('Failed to download model usage csv:', err);
+		} finally {
+			csvLoading = '';
+		}
 	};
 
 	const downloadUserCsv = async () => {
@@ -435,28 +524,7 @@
 		}
 	};
 
-	$: sortedModels = [...modelStats].sort((a, b) => {
-		if (modelOrderBy === 'name') {
-			const nameA = a.name || a.model_name;
-			const nameB = b.name || b.model_name;
-			return modelDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-		}
-		if (modelOrderBy === 'tokens') {
-			return compareNumber(
-				Number(a.total_tokens ?? 0),
-				Number(b.total_tokens ?? 0),
-				modelDirection
-			);
-		}
-		if (modelOrderBy === 'cost') {
-			return compareNumber(Number(a.cost_usd ?? 0), Number(b.cost_usd ?? 0), modelDirection);
-		}
-		return compareNumber(
-			Number(a.request_count ?? 0),
-			Number(b.request_count ?? 0),
-			modelDirection
-		);
-	});
+	$: sortedModels = sortModelStats(modelStats);
 
 	$: sortedUsers = userStats;
 
@@ -504,7 +572,7 @@
 			on:click={downloadModelCsv}
 			disabled={loading || csvLoading !== ''}
 		>
-			下载模型 CSV
+			{csvLoading === 'models' ? '导出中...' : '下载模型 CSV'}
 		</button>
 		<button
 			class="rounded-sm border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:hover:bg-gray-850"
