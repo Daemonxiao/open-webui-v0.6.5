@@ -7,6 +7,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-open-webui-hai}"
 OPEN_WEBUI_CANDIDATE_CONTAINER_NAME="${OPEN_WEBUI_CANDIDATE_CONTAINER_NAME:-${CONTAINER_NAME}-candidate}"
 NEW_API_CONTAINER_NAME="${NEW_API_CONTAINER_NAME:-new-api-hai}"
 NEW_API_NETWORK_ALIAS="${NEW_API_NETWORK_ALIAS:-new-api}"
+USAGE_RECONCILE_WORKER_CONTAINER_NAME="${USAGE_RECONCILE_WORKER_CONTAINER_NAME:-usage-reconcile-worker-hai}"
 DEPLOY_TARGET="${DEPLOY_TARGET:-open-webui}"
 HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-180}"
 HEALTH_CHECK_DELAY_SECONDS="${HEALTH_CHECK_DELAY_SECONDS:-5}"
@@ -150,6 +151,8 @@ print_docker_diagnostics() {
   docker network ls || true
   echo "New API logs:"
   docker logs --tail=200 "$NEW_API_CONTAINER_NAME" || true
+  echo "Usage reconcile worker logs:"
+  docker logs --tail=200 "$USAGE_RECONCILE_WORKER_CONTAINER_NAME" || true
   echo "Open WebUI logs:"
   docker logs --tail=200 "$CONTAINER_NAME" || true
 }
@@ -311,8 +314,42 @@ deploy_new_api() {
   return 1
 }
 
+deploy_usage_reconcile_worker() {
+  cd "$APP_DIR"
+  set -a
+  . "$APP_DIR/.env"
+  set +a
+
+  ensure_app_network
+  timeout "$COMPOSE_PULL_TIMEOUT_SECONDS" docker pull "$USAGE_RECONCILE_WORKER_IMAGE"
+  docker rm -f "$USAGE_RECONCILE_WORKER_CONTAINER_NAME" >/dev/null 2>&1 || true
+  timeout "$COMPOSE_UP_TIMEOUT_SECONDS" docker run -d \
+    --name "$USAGE_RECONCILE_WORKER_CONTAINER_NAME" \
+    --restart unless-stopped \
+    --network open-webui \
+    -p "${USAGE_RECONCILE_WORKER_PORT:-3080}:3080" \
+    --env-file "$APP_DIR/.env.usage-reconcile-worker" \
+    "$USAGE_RECONCILE_WORKER_IMAGE"
+  ensure_container_restart_service
+
+  for _ in $(seq 1 "$HEALTH_CHECK_ATTEMPTS"); do
+    if docker inspect -f '{{.State.Running}}' "$USAGE_RECONCILE_WORKER_CONTAINER_NAME" 2>/dev/null | grep -Fxq true; then
+      docker ps --filter "name=${USAGE_RECONCILE_WORKER_CONTAINER_NAME}"
+      prune_unused_images
+      return 0
+    fi
+    sleep "$HEALTH_CHECK_DELAY_SECONDS"
+  done
+
+  print_docker_diagnostics
+  return 1
+}
+
 deploy_target() {
   case "$DEPLOY_TARGET" in
+    usage-reconcile-worker)
+      deploy_usage_reconcile_worker
+      ;;
     new-api)
       deploy_new_api
       ;;
@@ -343,6 +380,9 @@ main() {
   case "$DEPLOY_TARGET" in
     new-api)
       wait_for_file "$APP_DIR/.env.new-api"
+      ;;
+    usage-reconcile-worker)
+      wait_for_file "$APP_DIR/.env.usage-reconcile-worker"
       ;;
     open-webui)
       wait_for_file "$APP_DIR/.env.hai"

@@ -1,4 +1,4 @@
-name: Deploy Gateway (New API) to Alibaba Cloud
+name: Deploy Usage Reconcile Worker to Alibaba Cloud
 
 on:
   workflow_dispatch:
@@ -15,12 +15,12 @@ env:
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
   TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
-  NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun:latest' }}
-  NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
+  USAGE_RECONCILE_WORKER_SOURCE_IMAGE: ${{ vars.USAGE_RECONCILE_WORKER_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest' }}
+  USAGE_RECONCILE_WORKER_PORT: ${{ vars.USAGE_RECONCILE_WORKER_PORT || '3080' }}
 
 jobs:
-  mirror-new-api:
-    name: Mirror Gateway image to ACR
+  mirror:
+    name: Mirror Usage Reconcile Worker image to ACR
     runs-on: ubuntu-latest
     environment: aliyun-hai
     env:
@@ -29,37 +29,44 @@ jobs:
       ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
       ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'open-webui' }}
       ACR_INSTANCE_ID: ${{ vars.ACR_INSTANCE_ID }}
-      NEW_API_SOURCE_IMAGE: ${{ vars.NEW_API_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun:latest' }}
+      USAGE_RECONCILE_WORKER_SOURCE_IMAGE: ${{ vars.USAGE_RECONCILE_WORKER_SOURCE_IMAGE || 'ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest' }}
+      USAGE_RECONCILE_WORKER_PORT: ${{ vars.USAGE_RECONCILE_WORKER_PORT || '3080' }}
       ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
       - name: Validate image settings
         run: |
           test -n "$ACR_NAMESPACE"
-          test -n "$NEW_API_SOURCE_IMAGE"
+          test -n "$USAGE_RECONCILE_WORKER_SOURCE_IMAGE"
           test -n "$ALICLOUD_ACCESS_KEY"
           test -n "$ALICLOUD_SECRET_KEY"
           if [ -n "$ACR_USERNAME" ] || [ -n "$ACR_PASSWORD" ]; then
             test -n "$ACR_USERNAME"
             test -n "$ACR_PASSWORD"
           fi
+          if [ -n "$GHCR_USERNAME" ] || [ -n "$GHCR_TOKEN" ]; then
+            test -n "$GHCR_USERNAME"
+            test -n "$GHCR_TOKEN"
+          fi
 
-      - name: Set Gateway image
+      - name: Set Usage Reconcile Worker image
         id: image
         run: |
-          source_tag="${NEW_API_SOURCE_IMAGE##*:}"
-          if [ "$source_tag" = "$NEW_API_SOURCE_IMAGE" ]; then
+          source_tag="${USAGE_RECONCILE_WORKER_SOURCE_IMAGE##*:}"
+          if [ "$source_tag" = "$USAGE_RECONCILE_WORKER_SOURCE_IMAGE" ]; then
             source_tag="latest"
           fi
-          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:new-api-${source_tag}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:usage-reconcile-worker-${source_tag}"
           echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "NEW_API_MIRROR_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "USAGE_RECONCILE_WORKER_MIRROR_IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Login to Alibaba Cloud ACR with password
         if: env.ACR_USERNAME != '' && env.ACR_PASSWORD != ''
@@ -88,17 +95,25 @@ jobs:
           access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
           instance-id: ${{ env.ACR_INSTANCE_ID }}
 
-      - name: Mirror Gateway image
-        run: |
-          docker pull "$NEW_API_SOURCE_IMAGE"
-          docker tag "$NEW_API_SOURCE_IMAGE" "$NEW_API_MIRROR_IMAGE"
-          docker push "$NEW_API_MIRROR_IMAGE"
+      - name: Login to GitHub Container Registry
+        if: env.GHCR_USERNAME != '' && env.GHCR_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ env.GHCR_USERNAME }}
+          password: ${{ env.GHCR_TOKEN }}
 
-  deploy-new-api:
-    name: Deploy Gateway (New API)
+      - name: Mirror Usage Reconcile Worker image
+        run: |
+          docker pull "$USAGE_RECONCILE_WORKER_SOURCE_IMAGE"
+          docker tag "$USAGE_RECONCILE_WORKER_SOURCE_IMAGE" "$USAGE_RECONCILE_WORKER_MIRROR_IMAGE"
+          docker push "$USAGE_RECONCILE_WORKER_MIRROR_IMAGE"
+
+  deploy:
+    name: Deploy Usage Reconcile Worker
     runs-on: ubuntu-latest
     environment: aliyun-hai
-    needs: mirror-new-api
+    needs: mirror
     env:
       ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
       ACR_REGISTRY: ${{ vars.ACR_REGISTRY || 'registry.cn-beijing.aliyuncs.com' }}
@@ -108,8 +123,9 @@ jobs:
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_LOCK_INSTANCE: ${{ vars.TF_LOCK_INSTANCE || 'ow-hai-tf-lock' }}
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'terraform_locks' }}
-      NEW_API_IMAGE: ${{ needs.mirror-new-api.outputs.image }}
-      NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
+      USAGE_RECONCILE_WORKER_IMAGE: ${{ needs.mirror.outputs.image }}
+      USAGE_RECONCILE_WORKER_PORT: ${{ vars.USAGE_RECONCILE_WORKER_PORT || '3080' }}
+      PROD_GITHUB_VARS_JSON: ${{ toJson(vars) }}
       ALICLOUD_ACCESS_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
       ALICLOUD_SECRET_KEY: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALICLOUD_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
@@ -120,6 +136,8 @@ jobs:
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       NEW_API_SESSION_SECRET: ${{ secrets.NEW_API_SESSION_SECRET }}
       NEW_API_CRYPTO_SECRET: ${{ secrets.NEW_API_CRYPTO_SECRET }}
+      PROD_USAGE_RECONCILE_FEISHU_APP_SECRET: ${{ secrets.PROD_USAGE_RECONCILE_FEISHU_APP_SECRET }}
+      PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN: ${{ secrets.PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN }}
       PROD_USAGE_RECONCILE_PAT: ${{ secrets.PROD_USAGE_RECONCILE_PAT }}
     steps:
       - name: Checkout
@@ -130,8 +148,8 @@ jobs:
           test -n "$ALICLOUD_ACCESS_KEY"
           test -n "$ALICLOUD_SECRET_KEY"
           test -n "$TF_STATE_BUCKET"
-          test -n "$NEW_API_IMAGE"
-          test -n "$NEW_API_PORT"
+          test -n "$USAGE_RECONCILE_WORKER_IMAGE"
+          test -n "$USAGE_RECONCILE_WORKER_PORT"
           test -n "$NEW_API_SESSION_SECRET"
           test -n "$NEW_API_CRYPTO_SECRET"
           test -n "$PROD_USAGE_RECONCILE_PAT"
@@ -162,17 +180,13 @@ jobs:
             -backend-config="tablestore_endpoint=https://${TF_LOCK_INSTANCE}.${ALIYUN_REGION}.ots.aliyuncs.com" \
             -backend-config="tablestore_table=$TF_LOCK_TABLE"
           echo "ECS_INSTANCE_ID=$(terraform -chdir=infra/aliyun output -raw instance_id)" >> "$GITHUB_ENV"
-          echo "NEW_API_URL=$(terraform -chdir=infra/aliyun output -raw new_api_url)" >> "$GITHUB_ENV"
-          echo "NEW_API_STATUS_URL=$(terraform -chdir=infra/aliyun output -raw new_api_status_url)" >> "$GITHUB_ENV"
+          echo "USAGE_RECONCILE_WORKER_URL=$(terraform -chdir=infra/aliyun output -raw usage_reconcile_worker_url)" >> "$GITHUB_ENV"
           new_api_database_url="$(terraform -chdir=infra/aliyun output -raw new_api_database_url)"
           echo "::add-mask::$new_api_database_url"
           echo "NEW_API_DATABASE_URL=$new_api_database_url" >> "$GITHUB_ENV"
 
-      - name: Deploy Gateway through ECS Cloud Assistant
-        run: bash deploy/aliyun/scripts/cloud-assistant-deploy-new-api.sh
+      - name: Deploy Usage Reconcile Worker through ECS Cloud Assistant
+        run: bash deploy/aliyun/scripts/cloud-assistant-deploy-usage-reconcile-worker.sh
 
-      - name: Verify Gateway status endpoint
-        run: curl --retry 30 --retry-all-errors --retry-delay 5 --fail "$NEW_API_STATUS_URL"
-
-      - name: Print Gateway URL
-        run: echo "Gateway (New API) is available at $NEW_API_URL"
+      - name: Print Usage Reconcile Worker URL
+        run: echo "Usage Reconcile Worker is available at $USAGE_RECONCILE_WORKER_URL"

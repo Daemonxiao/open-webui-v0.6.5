@@ -28,6 +28,8 @@ jobs:
     env:
       ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
       APP_PORT: ${{ vars.APP_PORT || '3000' }}
+      NEW_API_PORT: ${{ vars.NEW_API_PORT || '3001' }}
+      USAGE_RECONCILE_WORKER_PORT: ${{ vars.USAGE_RECONCILE_WORKER_PORT || '3080' }}
       ECS_CPU_CORE_COUNT: ${{ vars.ECS_CPU_CORE_COUNT || '8' }}
       ECS_MEMORY_SIZE: ${{ vars.ECS_MEMORY_SIZE || '16' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
@@ -123,6 +125,8 @@ jobs:
           terraform -chdir=infra/aliyun plan \
             -var "region=$ALIYUN_REGION" \
             -var "app_port=$APP_PORT" \
+            -var "new_api_port=$NEW_API_PORT" \
+            -var "usage_reconcile_worker_port=$USAGE_RECONCILE_WORKER_PORT" \
             -var "ecs_cpu_core_count=$ECS_CPU_CORE_COUNT" \
             -var "ecs_memory_size=$ECS_MEMORY_SIZE" \
             -out=tfplan

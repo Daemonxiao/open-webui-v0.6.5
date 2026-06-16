@@ -32,14 +32,21 @@ Environment secrets:
 - `OPEN_WEBUI_ENV_HAI_B64`
 - `NEW_API_SESSION_SECRET`
 - `NEW_API_CRYPTO_SECRET`
+- `PROD_USAGE_RECONCILE_FEISHU_APP_SECRET`
+- `PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN`
+- `PROD_USAGE_RECONCILE_PAT`
 
 Optional environment secrets:
 
 - `ACR_USERNAME`
 - `ACR_PASSWORD`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
 - `NEW_API_OPENWEBUI_TOKEN`
 
 By default, workflows use `aliyun/acr-login@v1` with the Alibaba Cloud AccessKey to log in to ACR. If ACR returns `denied: requested access to the resource is denied` while pushing the image, either grant that RAM user push permission to the repository or set `ACR_USERNAME` and `ACR_PASSWORD` from the ACR Access Credential page. When both ACR secrets are present, the build and deploy workflows use them before trying AccessKey-based ACR login.
+
+If the usage reconcile worker image in GHCR is private, set `GHCR_USERNAME` and `GHCR_TOKEN` as environment secrets. `GHCR_TOKEN` must have `read:packages` permission for `ghcr.io/heibaijian/tokenfun/usage-reconcile-worker`.
 
 Generate `OPEN_WEBUI_ENV_HAI_B64` locally without printing the secret values:
 
@@ -70,6 +77,8 @@ Environment variables:
 - `APP_PORT=3000`
 - `NEW_API_PORT=3001`
 - `NEW_API_SOURCE_IMAGE=ghcr.io/heibaijian/tokenfun:latest`
+- `USAGE_RECONCILE_WORKER_SOURCE_IMAGE=ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest`
+- `USAGE_RECONCILE_WORKER_PORT=3080`
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
 - `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
@@ -84,7 +93,8 @@ Environment variables:
 4. Run `Deploy Gateway (New API) to Alibaba Cloud`.
 5. Open the New API web UI, configure upstream channels, and create a token for Open WebUI.
 6. Configure that token in the Open WebUI web UI, or save it as the optional `NEW_API_OPENWEBUI_TOKEN` environment secret.
-7. Run `Deploy Open WebUI to Alibaba Cloud`, or push to `main`.
+7. Run `Deploy Usage Reconcile Worker to Alibaba Cloud`.
+8. Run `Deploy Open WebUI to Alibaba Cloud`, or push to `main`.
 
 The Open WebUI deploy workflow builds and pushes:
 
@@ -96,6 +106,10 @@ registry.cn-beijing.aliyuncs.com/<ACR_NAMESPACE>/open-webui:latest
 Then it uploads the Compose file, `.env.hai`, and Docker auth config to ECS with Cloud Assistant and runs the deployment command on the instance.
 
 The New API deploy workflow mirrors the pinned public image from `NEW_API_SOURCE_IMAGE` to the existing ACR repository, then deploys the mirrored ACR image to ECS. This avoids slow or blocked Docker Hub pulls from the ECS instance. The default source image is `ghcr.io/heibaijian/tokenfun:latest`, and the New API web UI is exposed on `NEW_API_PORT`.
+
+The usage reconcile worker deploy workflow follows the same mirror-to-ACR pattern. It pulls `USAGE_RECONCILE_WORKER_SOURCE_IMAGE`, defaults to `ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest`, pushes it as an ACR image, and starts it on the same ECS instance with the New API database connection.
+
+If you add or change `USAGE_RECONCILE_WORKER_PORT`, run the `Alibaba Cloud Infra` workflow with `stack=aliyun` and `apply=true` before deploying the worker so the ECS security group opens the public Feishu event port.
 
 ## New API Gateway
 
@@ -122,6 +136,8 @@ gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai
 
 Then rerun `Deploy Open WebUI to Alibaba Cloud`.
 
+The usage reconcile worker runs as a separate container on the same `open-webui` Docker network. It exposes `USAGE_RECONCILE_WORKER_PORT`, default `3080`, on the ECS public EIP for Feishu event subscriptions. It receives the same New API `SQL_DSN`, `SESSION_SECRET`, and `CRYPTO_SECRET` values as the gateway so it can reconcile usage data against the New API database. It also receives GitHub Actions environment variables whose names start with `PROD_`, plus explicitly wired `PROD_` secrets such as `PROD_USAGE_RECONCILE_PAT`.
+
 ## Database And Redis
 
 Terraform creates an ApsaraDB RDS PostgreSQL instance and outputs a sensitive `database_url`. The deploy workflow reads that output and injects it into the container as:
@@ -132,6 +148,10 @@ Terraform creates an ApsaraDB RDS PostgreSQL instance and outputs a sensitive `d
 Terraform also creates a separate PostgreSQL database and account for New API in the same RDS instance. New API receives that connection string as:
 
 - `SQL_DSN`
+
+The New API deploy also injects:
+
+- `PROD_USAGE_RECONCILE_PAT`
 
 The Open WebUI and New API databases are intentionally separate even though they share one RDS instance. This avoids schema and migration coupling between the two applications.
 
@@ -176,7 +196,7 @@ terraform -chdir=infra/aliyun apply
 ## Security Notes
 
 - `.env.hai` stays ignored by Git and Docker build context.
-- Public test access currently opens `APP_PORT` and `NEW_API_PORT` to `0.0.0.0/0`.
+- Public test access currently opens `APP_PORT`, `NEW_API_PORT`, and `USAGE_RECONCILE_WORKER_PORT` to `0.0.0.0/0`.
 - New API exposes an administrative web UI. Change default credentials immediately after first login and restrict ingress before production use.
 - SSH is closed unless `ssh_ingress_cidr_blocks` is explicitly set in Terraform.
 - For production, replace public IP testing with domain + HTTPS and restrict ingress.

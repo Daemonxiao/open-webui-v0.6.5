@@ -71,13 +71,13 @@ resolve_acr_pull_registry() {
   fi
 }
 
-resolve_new_api_pull_image() {
+resolve_worker_pull_image() {
   resolve_acr_pull_registry
 
-  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ] && [[ "$NEW_API_IMAGE" == "$ACR_REGISTRY/"* ]]; then
-    NEW_API_PULL_IMAGE="${ACR_PULL_REGISTRY}/${NEW_API_IMAGE#"$ACR_REGISTRY/"}"
+  if [ "$ACR_PULL_REGISTRY" != "$ACR_REGISTRY" ] && [[ "$USAGE_RECONCILE_WORKER_IMAGE" == "$ACR_REGISTRY/"* ]]; then
+    USAGE_RECONCILE_WORKER_PULL_IMAGE="${ACR_PULL_REGISTRY}/${USAGE_RECONCILE_WORKER_IMAGE#"$ACR_REGISTRY/"}"
   else
-    NEW_API_PULL_IMAGE="$NEW_API_IMAGE"
+    USAGE_RECONCILE_WORKER_PULL_IMAGE="$USAGE_RECONCILE_WORKER_IMAGE"
   fi
 }
 
@@ -121,6 +121,26 @@ decode_maybe_base64() {
     cat "$decoded_file"
   else
     printf '%s\n' "$value"
+  fi
+}
+
+append_secret_env_if_set() {
+  local file="$1"
+  local name="$2"
+  local value="${!name:-}"
+
+  if [ -n "$value" ]; then
+    mask_value "$value"
+    printf '%s=%s\n' "$name" "$value" >> "$file"
+  fi
+}
+
+append_prod_vars_from_json() {
+  local file="$1"
+
+  if [ -n "${PROD_GITHUB_VARS_JSON:-}" ]; then
+    jq -r 'to_entries[] | select(.key | startswith("PROD_")) | "\(.key)=\(.value)"' \
+      <<< "$PROD_GITHUB_VARS_JSON" >> "$file"
   fi
 }
 
@@ -169,15 +189,15 @@ main() {
   required_env ALIYUN_REGION
   required_env ECS_INSTANCE_ID
   required_env ACR_REGISTRY
-  required_env NEW_API_IMAGE
+  required_env USAGE_RECONCILE_WORKER_IMAGE
+  required_env USAGE_RECONCILE_WORKER_PORT
   required_env NEW_API_DATABASE_URL
   required_env NEW_API_SESSION_SECRET
   required_env NEW_API_CRYPTO_SECRET
   required_env PROD_USAGE_RECONCILE_PAT
 
-  local new_api_port="${NEW_API_PORT:-3001}"
   local compose_env="$TMP_DIR/compose.env"
-  local env_new_api="$TMP_DIR/.env.new-api"
+  local env_worker="$TMP_DIR/.env.usage-reconcile-worker"
   local docker_config="$TMP_DIR/config.json"
   local prepare_script="$TMP_DIR/prepare.sh"
   local docker_auth
@@ -188,23 +208,27 @@ main() {
   mask_value "$NEW_API_SESSION_SECRET"
   mask_value "$NEW_API_CRYPTO_SECRET"
   mask_value "$PROD_USAGE_RECONCILE_PAT"
-  resolve_new_api_pull_image
+  resolve_worker_pull_image
 
   {
-    printf 'NEW_API_IMAGE=%s\n' "$NEW_API_PULL_IMAGE"
-    printf 'NEW_API_PORT=%s\n' "$new_api_port"
-    printf 'DEPLOY_TARGET=new-api\n'
+    printf 'USAGE_RECONCILE_WORKER_IMAGE=%s\n' "$USAGE_RECONCILE_WORKER_PULL_IMAGE"
+    printf 'USAGE_RECONCILE_WORKER_PORT=%s\n' "$USAGE_RECONCILE_WORKER_PORT"
+    printf 'DEPLOY_TARGET=usage-reconcile-worker\n'
   } > "$compose_env"
+
   {
-    printf 'PORT=3000\n'
+    printf 'PORT=3080\n'
     printf 'TZ=Asia/Shanghai\n'
     printf 'SQL_DSN=%s\n' "$NEW_API_DATABASE_URL"
     printf 'SESSION_SECRET=%s\n' "$NEW_API_SESSION_SECRET"
     printf 'CRYPTO_SECRET=%s\n' "$NEW_API_CRYPTO_SECRET"
-    printf 'PROD_USAGE_RECONCILE_PAT=%s\n' "$PROD_USAGE_RECONCILE_PAT"
     printf 'MEMORY_CACHE_ENABLED=true\n'
     printf 'BATCH_UPDATE_ENABLED=true\n'
-  } > "$env_new_api"
+  } > "$env_worker"
+  append_prod_vars_from_json "$env_worker"
+  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_FEISHU_APP_SECRET
+  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
+  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_PAT
 
   resolve_acr_credentials
   docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
@@ -232,7 +256,7 @@ SCRIPT
     --Type RunShellScript \
     --CommandContent "$(file_to_base64 "$prepare_script")" \
     --ContentEncoding Base64 \
-    --Name "new-api-prepare-${GITHUB_RUN_ID:-manual}" \
+    --Name "usage-reconcile-worker-prepare-${GITHUB_RUN_ID:-manual}" \
     --Timeout 300 \
     --WorkingDir "/root")"
 
@@ -243,9 +267,9 @@ SCRIPT
   fi
   wait_for_command "$invoke_id" 60
 
-  send_file "$REPO_ROOT/deploy/aliyun/docker-compose.new-api.yml" "docker-compose.new-api.yml" "/opt/open-webui" "0600"
+  send_file "$REPO_ROOT/deploy/aliyun/docker-compose.usage-reconcile-worker.yml" "docker-compose.usage-reconcile-worker.yml" "/opt/open-webui" "0600"
   send_file "$compose_env" ".env" "/opt/open-webui" "0600"
-  send_file "$env_new_api" ".env.new-api" "/opt/open-webui" "0600"
+  send_file "$env_worker" ".env.usage-reconcile-worker" "/opt/open-webui" "0600"
   send_file "$docker_config" "config.json" "/root/.docker" "0600"
 
   run_response="$(aliyun ecs RunCommand \
@@ -254,7 +278,7 @@ SCRIPT
     --Type RunShellScript \
     --CommandContent "$(file_to_base64 "$REPO_ROOT/deploy/aliyun/scripts/ecs-deploy.sh")" \
     --ContentEncoding Base64 \
-    --Name "new-api-deploy-${GITHUB_RUN_ID:-manual}" \
+    --Name "usage-reconcile-worker-deploy-${GITHUB_RUN_ID:-manual}" \
     --Timeout 1800 \
     --WorkingDir "/opt/open-webui")"
 

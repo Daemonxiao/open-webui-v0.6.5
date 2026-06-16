@@ -112,6 +112,20 @@ resource "alicloud_security_group_rule" "new_api_ingress" {
   description       = "New API public access"
 }
 
+resource "alicloud_security_group_rule" "usage_reconcile_worker_ingress" {
+  for_each = toset(var.usage_reconcile_worker_ingress_cidr_blocks)
+
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  nic_type          = "intranet"
+  policy            = "accept"
+  port_range        = "${var.usage_reconcile_worker_port}/${var.usage_reconcile_worker_port}"
+  priority          = 3
+  security_group_id = alicloud_security_group.app.id
+  cidr_ip           = each.value
+  description       = "Usage reconcile worker public access"
+}
+
 resource "alicloud_security_group_rule" "ssh_ingress" {
   for_each = toset(var.ssh_ingress_cidr_blocks)
 

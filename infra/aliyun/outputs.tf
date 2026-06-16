@@ -38,6 +38,11 @@ output "new_api_status_url" {
   value       = "http://${alicloud_eip_address.app.ip_address}:${var.new_api_port}/api/status"
 }
 
+output "usage_reconcile_worker_url" {
+  description = "Public usage reconcile worker URL for Feishu event subscriptions."
+  value       = "http://${alicloud_eip_address.app.ip_address}:${var.usage_reconcile_worker_port}"
+}
+
 output "data_disk_id" {
   description = "Persistent Open WebUI data disk id."
   value       = alicloud_ecs_disk.data.id
