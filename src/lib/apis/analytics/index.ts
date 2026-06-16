@@ -78,6 +78,51 @@ export const getUserAnalytics = async (
 	return res;
 };
 
+export const getUserChatCounts = async (
+	token: string = '',
+	startDate: number | null = null,
+	endDate: number | null = null,
+	userIds: string[] = [],
+	groupId: string | null = null
+) => {
+	let error = null;
+
+	const searchParams = new URLSearchParams();
+	if (startDate) searchParams.append('start_date', startDate.toString());
+	if (endDate) searchParams.append('end_date', endDate.toString());
+	if (groupId) searchParams.append('group_id', groupId);
+	for (const userId of userIds) {
+		if (userId) searchParams.append('user_ids', userId);
+	}
+
+	const res = await fetch(
+		`${WEBUI_API_BASE_URL}/analytics/users/chat-counts?${searchParams.toString()}`,
+		{
+			method: 'GET',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				authorization: `Bearer ${token}`
+			}
+		}
+	)
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			error = err.detail;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getMessages = async (
 	token: string = '',
 	modelId: string | null = null,

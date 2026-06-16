@@ -39,6 +39,7 @@ class UserAnalyticsEntry(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     count: int
+    chat_count: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
@@ -46,6 +47,15 @@ class UserAnalyticsEntry(BaseModel):
 
 class UserAnalyticsResponse(BaseModel):
     users: list[UserAnalyticsEntry]
+
+
+class UserChatCountEntry(BaseModel):
+    user_id: str
+    chat_count: int
+
+
+class UserChatCountsResponse(BaseModel):
+    users: list[UserChatCountEntry]
 
 
 ####################
@@ -88,6 +98,9 @@ async def get_user_analytics(
     token_usage = await ChatMessages.get_token_usage_by_user(
         start_date=start_date, end_date=end_date, group_id=group_id, db=db
     )
+    chat_counts = await Chats.get_chat_count_by_user(
+        start_date=start_date, end_date=end_date, group_id=group_id, db=db
+    )
 
     # Get user info for top users
     top_user_ids = [uid for uid, _ in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
@@ -103,6 +116,7 @@ async def get_user_analytics(
                 name=u.name if u else None,
                 email=u.email if u else None,
                 count=counts[user_id],
+                chat_count=chat_counts.get(user_id, 0),
                 input_tokens=tokens.get('input_tokens', 0),
                 output_tokens=tokens.get('output_tokens', 0),
                 total_tokens=tokens.get('total_tokens', 0),
@@ -110,6 +124,30 @@ async def get_user_analytics(
         )
 
     return UserAnalyticsResponse(users=users)
+
+
+@router.get('/users/chat-counts', response_model=UserChatCountsResponse)
+async def get_user_chat_counts(
+    start_date: Optional[int] = Query(None, description='Start timestamp (epoch)'),
+    end_date: Optional[int] = Query(None, description='End timestamp (epoch)'),
+    group_id: Optional[str] = Query(None, description='Filter by user group ID'),
+    user_ids: Optional[list[str]] = Query(None, description='Filter by user IDs'),
+    user=Depends(get_admin_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Get Open WebUI local chat creation counts per user."""
+    counts = await Chats.get_chat_count_by_user(
+        start_date=start_date,
+        end_date=end_date,
+        user_ids=user_ids,
+        group_id=group_id,
+        db=db,
+    )
+    users = [
+        UserChatCountEntry(user_id=user_id, chat_count=count)
+        for user_id, count in sorted(counts.items(), key=lambda x: -x[1])
+    ]
+    return UserChatCountsResponse(users=users)
 
 
 @router.get('/messages', response_model=list[ChatMessageModel])

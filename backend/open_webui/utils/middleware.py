@@ -4119,16 +4119,32 @@ async def streaming_chat_response_handler(response, ctx):
                                         error = data.get('error', {})
                                         if error:
                                             log.error('Provider returned error (streaming): %s', error)
+                                            error_payload = (
+                                                {
+                                                    'content': error.get('message')
+                                                    or error.get('detail')
+                                                    or str(error),
+                                                    **error,
+                                                }
+                                                if isinstance(error, dict)
+                                                else {'content': str(error)}
+                                            )
                                             try:
                                                 await Chats.upsert_message_to_chat_by_id_and_message_id(
                                                     metadata['chat_id'],
                                                     metadata['message_id'],
                                                     {
-                                                        'error': {'content': error},
+                                                        'error': error_payload,
                                                     },
                                                 )
                                             except Exception:
                                                 pass
+                                            await event_emitter(
+                                                {
+                                                    'type': 'chat:message:error',
+                                                    'data': {'error': error_payload},
+                                                }
+                                            )
                                             await event_emitter(
                                                 {
                                                     'type': 'chat:completion',

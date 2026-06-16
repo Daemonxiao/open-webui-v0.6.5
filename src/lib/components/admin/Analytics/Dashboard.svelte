@@ -6,6 +6,7 @@
 		getAdminTokenfunUsageSummary,
 		getAdminTokenfunUsageUsers
 	} from '$lib/apis/tokenfun-usage';
+	import { getUserChatCounts } from '$lib/apis/analytics';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
@@ -47,6 +48,7 @@
 	let userStats: Array<any> = [];
 	let loading = true;
 	let usersLoading = false;
+	let csvLoading = '';
 	let tokenfunError = '';
 	let showAnalyticsCosts =
 		typeof localStorage !== 'undefined'
@@ -60,6 +62,8 @@
 	let userPage = 1;
 	let userTotal = 0;
 	const userPageSize = 20;
+	const exportModelPageSize = 100;
+	const exportUserPageSize = 100;
 
 	const parseDate = (value: string) => {
 		const [year, month, day] = value.split('-').map((part) => Number(part));
@@ -144,6 +148,37 @@
 		return [...merged.values()];
 	};
 
+	const mergeModelStatsByName = (items: Array<any>) => {
+		const merged = new Map<string, any>();
+		for (const item of items) {
+			const modelName = item.model_name || '';
+			if (!modelName) {
+				continue;
+			}
+
+			const current = merged.get(modelName);
+			if (!current) {
+				merged.set(modelName, { ...item });
+				continue;
+			}
+
+			const costUsd = Number(current.cost_usd ?? 0) + Number(item.cost_usd ?? 0);
+			merged.set(modelName, {
+				...current,
+				request_count: Number(current.request_count ?? 0) + Number(item.request_count ?? 0),
+				prompt_tokens: Number(current.prompt_tokens ?? 0) + Number(item.prompt_tokens ?? 0),
+				completion_tokens:
+					Number(current.completion_tokens ?? 0) + Number(item.completion_tokens ?? 0),
+				total_tokens: Number(current.total_tokens ?? 0) + Number(item.total_tokens ?? 0),
+				quota: Number(current.quota ?? 0) + Number(item.quota ?? 0),
+				cost_usd: costUsd,
+				cost_display: `$${costUsd.toFixed(6)}`
+			});
+		}
+
+		return [...merged.values()];
+	};
+
 	const loadCostVisibility = () => {
 		showAnalyticsCosts =
 			typeof localStorage !== 'undefined'
@@ -153,6 +188,212 @@
 
 	const compareNumber = (a: number, b: number, direction: 'asc' | 'desc') =>
 		direction === 'asc' ? a - b : b - a;
+
+	const csvValue = (value: any) => {
+		const text = value === undefined || value === null ? '' : `${value}`;
+		return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+	};
+
+	const buildCsv = (rows: any[][]) =>
+		`\ufeff${rows.map((row) => row.map(csvValue).join(',')).join('\n')}`;
+
+	const downloadCsvFile = (filename: string, rows: any[][]) => {
+		const csv = buildCsv(rows);
+		const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		URL.revokeObjectURL(url);
+	};
+
+	const buildModelCsvRows = (items: Array<any>) => {
+		const rows: any[][] = [['名称', 'API请求', 'Tokens', '输入', '输出']];
+		if (showAnalyticsCosts) {
+			rows[0].push('费用');
+		}
+
+		for (const model of items) {
+			const row = [
+				model.name || model.model_name,
+				model.request_count,
+				model.total_tokens,
+				model.prompt_tokens ?? '',
+				model.completion_tokens ?? ''
+			];
+			if (showAnalyticsCosts) {
+				row.push(formatCost(model));
+			}
+			rows.push(row);
+		}
+		return rows;
+	};
+
+	const buildUserCsvRows = (items: Array<any>) => {
+		const rows: any[][] = [['名称', '邮箱', '用户ID', 'API请求', '对话', 'Tokens', '输入', '输出']];
+		if (showAnalyticsCosts) {
+			rows[0].push('费用');
+		}
+
+		for (const item of items) {
+			const row = [
+				item._display_username || item._display_user_email || item.external_user_id,
+				item._display_user_email || '',
+				item.external_user_id,
+				item.request_count,
+				item.chat_count,
+				item.total_tokens,
+				item.prompt_tokens ?? '',
+				item.completion_tokens ?? ''
+			];
+			if (showAnalyticsCosts) {
+				row.push(formatCost(item));
+			}
+			rows.push(row);
+		}
+		return rows;
+	};
+
+	const sortModelStats = (items: Array<any>) =>
+		[...items].sort((a, b) => {
+			if (modelOrderBy === 'name') {
+				const nameA = a.name || a.model_name;
+				const nameB = b.name || b.model_name;
+				return modelDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+			}
+			if (modelOrderBy === 'tokens') {
+				return compareNumber(
+					Number(a.total_tokens ?? 0),
+					Number(b.total_tokens ?? 0),
+					modelDirection
+				);
+			}
+			if (modelOrderBy === 'cost') {
+				return compareNumber(Number(a.cost_usd ?? 0), Number(b.cost_usd ?? 0), modelDirection);
+			}
+			return compareNumber(
+				Number(a.request_count ?? 0),
+				Number(b.request_count ?? 0),
+				modelDirection
+			);
+		});
+
+	const loadAllModelStatsForExport = async (start: number, end: number) => {
+		const modelsMap = new Map($models.map((m) => [m.id, m.name || m.id]));
+		const allItems = [];
+		let page = 1;
+
+		while (true) {
+			const res = await getAdminTokenfunUsageModels(
+				localStorage.token,
+				start,
+				end,
+				page,
+				exportModelPageSize
+			);
+			const currentItems = res?.data?.items ?? [];
+			allItems.push(...currentItems);
+			if (currentItems.length < exportModelPageSize) {
+				break;
+			}
+			page += 1;
+		}
+
+		return sortModelStats(
+			mergeModelStatsByName(allItems).map((entry: any) => ({
+				...entry,
+				name: modelsMap.get(entry.model_name) || entry.model_name
+			}))
+		);
+	};
+
+	const loadAllUserStatsForExport = async (start: number, end: number) => {
+		const allItems = [];
+		let page = 1;
+
+		while (true) {
+			const res = await getAdminTokenfunUsageUsers(
+				localStorage.token,
+				start,
+				end,
+				page,
+				exportUserPageSize,
+				'',
+				'',
+				userOrderBy,
+				userDirection
+			);
+			const currentItems = res?.data?.items ?? [];
+			allItems.push(...currentItems);
+			if (currentItems.length < exportUserPageSize) {
+				break;
+			}
+			page += 1;
+		}
+
+		const allUsers = mergeUserStatsById(allItems).map((entry: any) => ({
+			...entry,
+			_display_username: entry.external_username ? decodeString(entry.external_username) : '',
+			_display_user_email: entry.external_user_email ? decodeString(entry.external_user_email) : ''
+		}));
+		if (allUsers.length > 0) {
+			try {
+				const countsRes = await getUserChatCounts(localStorage.token, start, end);
+				const counts = new Map(
+					(countsRes?.users ?? []).map((entry: any) => [
+						entry.user_id,
+						Number(entry.chat_count ?? 0)
+					])
+				);
+				return allUsers.map((entry) => ({
+					...entry,
+					chat_count: counts.get(entry.external_user_id) ?? 0
+				}));
+			} catch (err) {
+				console.error('Failed to load local chat counts for export:', err);
+			}
+		}
+
+		return allUsers.map((entry) => ({
+			...entry,
+			chat_count: 0
+		}));
+	};
+
+	const downloadModelCsv = async () => {
+		const { start, end } = getDateRange();
+		csvLoading = 'models';
+		try {
+			const allModels = await loadAllModelStatsForExport(start, end);
+			downloadCsvFile(
+				`analytics-model-usage-${startDate}-${endDate}.csv`,
+				buildModelCsvRows(allModels)
+			);
+		} catch (err) {
+			console.error('Failed to download model usage csv:', err);
+		} finally {
+			csvLoading = '';
+		}
+	};
+
+	const downloadUserCsv = async () => {
+		const { start, end } = getDateRange();
+		csvLoading = 'users';
+		try {
+			const allUsers = await loadAllUserStatsForExport(start, end);
+			downloadCsvFile(
+				`analytics-user-activity-${startDate}-${endDate}.csv`,
+				buildUserCsvRows(allUsers)
+			);
+		} catch (err) {
+			console.error('Failed to download user activity csv:', err);
+		} finally {
+			csvLoading = '';
+		}
+	};
 
 	const toggleModelSort = (key: string) => {
 		if (modelOrderBy === key) {
@@ -177,9 +418,31 @@
 		userTotal = Number(usersRes?.data?.total ?? 0);
 		userStats = mergeUserStatsById(usersRes?.data?.items ?? []).map((entry: any) => ({
 			...entry,
+			chat_count: 0,
 			_display_username: entry.external_username ? decodeString(entry.external_username) : '',
 			_display_user_email: entry.external_user_email ? decodeString(entry.external_user_email) : ''
 		}));
+	};
+
+	const applyUserChatCounts = async (items: Array<any>, start: number, end: number) => {
+		const userIds = items.map((entry) => entry.external_user_id).filter(Boolean);
+		if (userIds.length === 0) {
+			return items;
+		}
+
+		try {
+			const res = await getUserChatCounts(localStorage.token, start, end, userIds);
+			const counts = new Map(
+				(res?.users ?? []).map((entry: any) => [entry.user_id, Number(entry.chat_count ?? 0)])
+			);
+			return items.map((entry) => ({
+				...entry,
+				chat_count: counts.get(entry.external_user_id) ?? 0
+			}));
+		} catch (err) {
+			console.error('Failed to load local chat counts:', err);
+		}
+		return items;
 	};
 
 	const loadUserPage = async (page = userPage) => {
@@ -200,6 +463,7 @@
 				userDirection
 			);
 			updateUserStats(usersRes);
+			userStats = await applyUserChatCounts(userStats, start, end);
 		} catch (err) {
 			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
 			userStats = [];
@@ -242,6 +506,7 @@
 				name: modelsMap.get(entry.model_name) || entry.model_name
 			}));
 			updateUserStats(usersRes);
+			userStats = await applyUserChatCounts(userStats, start, end);
 		} catch (err) {
 			tokenfunError = typeof err === 'string' ? err : JSON.stringify(err);
 			summary = {
@@ -259,25 +524,7 @@
 		}
 	};
 
-	$: sortedModels = [...modelStats].sort((a, b) => {
-		if (modelOrderBy === 'name') {
-			const nameA = a.name || a.model_name;
-			const nameB = b.name || b.model_name;
-			return modelDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-		}
-		if (modelOrderBy === 'tokens') {
-			return compareNumber(
-				Number(a.total_tokens ?? 0),
-				Number(b.total_tokens ?? 0),
-				modelDirection
-			);
-		}
-		return compareNumber(
-			Number(a.request_count ?? 0),
-			Number(b.request_count ?? 0),
-			modelDirection
-		);
-	});
+	$: sortedModels = sortModelStats(modelStats);
 
 	$: sortedUsers = userStats;
 
@@ -320,6 +567,20 @@
 			aria-label="结束日期"
 			on:change={loadDashboard}
 		/>
+		<button
+			class="rounded-sm border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-850"
+			on:click={downloadModelCsv}
+			disabled={loading || csvLoading !== ''}
+		>
+			{csvLoading === 'models' ? '导出中...' : '下载模型 CSV'}
+		</button>
+		<button
+			class="rounded-sm border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:hover:bg-gray-850"
+			on:click={downloadUserCsv}
+			disabled={loading || csvLoading !== ''}
+		>
+			{csvLoading === 'users' ? '导出中...' : '下载用户 CSV'}
+		</button>
 		<button
 			class="rounded-sm border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-850"
 			on:click={loadDashboard}
@@ -413,6 +674,24 @@
 							>
 								<div class="flex gap-1.5 items-center justify-end">Tokens</div>
 							</th>
+							{#if showAnalyticsCosts}
+								<th
+									scope="col"
+									class="px-2.5 py-2 cursor-pointer select-none text-right"
+									on:click={() => toggleModelSort('cost')}
+								>
+									<div class="flex gap-1.5 items-center justify-end">
+										费用
+										{#if modelOrderBy === 'cost'}
+											{#if modelDirection === 'asc'}<ChevronUp
+													className="size-2"
+												/>{:else}<ChevronDown className="size-2" />{/if}
+										{:else}
+											<span class="invisible"><ChevronUp className="size-2" /></span>
+										{/if}
+									</div>
+								</th>
+							{/if}
 						</tr>
 					</thead>
 					<tbody>
@@ -434,10 +713,18 @@
 								</td>
 								<td class="px-3 py-1 text-right">{formatNumber(model.request_count)}</td>
 								<td class="px-3 py-1 text-right">{formatNumber(model.total_tokens)}</td>
+								{#if showAnalyticsCosts}
+									<td class="px-3 py-1 text-right">{formatCost(model)}</td>
+								{/if}
 							</tr>
 						{/each}
 						{#if sortedModels.length === 0}
-							<tr><td colspan="4" class="px-3 py-2 text-center text-gray-400">暂无数据</td></tr>
+							<tr
+								><td
+									colspan={showAnalyticsCosts ? 5 : 4}
+									class="px-3 py-2 text-center text-gray-400">暂无数据</td
+								></tr
+							>
 						{/if}
 					</tbody>
 				</table>
@@ -491,6 +778,9 @@
 									{/if}
 								</div>
 							</th>
+							<th scope="col" class="px-2.5 py-2 text-right">
+								<div class="flex gap-1.5 items-center justify-end">对话</div>
+							</th>
 							<th
 								scope="col"
 								class="px-2.5 py-2 cursor-pointer select-none text-right"
@@ -543,6 +833,7 @@
 									</div>
 								</td>
 								<td class="px-3 py-1 text-right">{formatNumber(item.request_count)}</td>
+								<td class="px-3 py-1 text-right">{formatNumber(item.chat_count)}</td>
 								<td class="px-3 py-1 text-right">{formatNumber(item.total_tokens)}</td>
 								{#if showAnalyticsCosts}
 									<td class="px-3 py-1 text-right">{formatCost(item)}</td>
@@ -552,7 +843,7 @@
 						{#if sortedUsers.length === 0}
 							<tr
 								><td
-									colspan={showAnalyticsCosts ? 5 : 4}
+									colspan={showAnalyticsCosts ? 6 : 5}
 									class="px-3 py-2 text-center text-gray-400">暂无数据</td
 								></tr
 							>

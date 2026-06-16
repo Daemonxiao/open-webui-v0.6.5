@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import random
 import re
 from typing import Optional
 from urllib.parse import quote, urlparse
@@ -82,11 +83,252 @@ log = logging.getLogger(__name__)
 # clients to attempt decompression of an already-decoded payload, resulting
 # in ZlibError.  See https://github.com/aio-libs/aiohttp/issues/4462.
 _STRIP_PROXY_HEADERS = frozenset({'Content-Encoding', 'Content-Length', 'Transfer-Encoding'})
+_CHAT_COMPLETION_MAX_RETRIES = 3
+_CHAT_COMPLETION_RETRY_BACKOFF = (1, 2, 4)
 
 
 def _clean_proxy_headers(raw_headers) -> dict:
     """Return a copy of *raw_headers* with stale encoding headers removed."""
     return {k: v for k, v in raw_headers.items() if k not in _STRIP_PROXY_HEADERS}
+
+
+def _is_retryable_upstream_status(status_code: int) -> bool:
+    # Initial policy: retry every upstream HTTP failure. User cancellation is
+    # represented by asyncio.CancelledError and is handled separately.
+    return status_code >= 400
+
+
+def _retry_status_event(retry_count: int) -> dict:
+    return {
+        'type': 'status',
+        'data': {
+            'action': 'llm_retry',
+            'description': f'Retrying upstream model (retry {retry_count}/{_CHAT_COMPLETION_MAX_RETRIES})',
+            'done': False,
+            'retry_count': retry_count,
+            'max_retries': _CHAT_COMPLETION_MAX_RETRIES,
+        },
+    }
+
+
+async def _emit_retry_status(request: Request, retry_count: int) -> None:
+    event = _retry_status_event(retry_count)
+    event_emitter = getattr(request.state, 'llm_retry_event_emitter', None)
+    if event_emitter:
+        try:
+            await event_emitter(event)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.debug('Failed to emit upstream retry status: %s', exc)
+
+    retry_events = getattr(request.state, 'llm_retry_events', None)
+    if retry_events is None:
+        retry_events = []
+        request.state.llm_retry_events = retry_events
+    retry_events.append(event)
+
+
+async def _retry_backoff(retry_count: int) -> None:
+    delay = _CHAT_COMPLETION_RETRY_BACKOFF[retry_count - 1] + random.uniform(0, 0.25)
+    await asyncio.sleep(delay)
+
+
+def _error_message(detail) -> str:
+    if isinstance(detail, dict):
+        error = detail.get('error', detail)
+        if isinstance(error, dict):
+            return str(error.get('message') or error.get('detail') or error)
+        return str(error)
+    return str(detail)
+
+
+def _structured_upstream_error(detail, status_code: int, retry_count: int) -> dict:
+    return {
+        'message': _error_message(detail),
+        'detail': detail,
+        'status_code': status_code,
+        'retry_count': retry_count,
+        'max_retries': _CHAT_COMPLETION_MAX_RETRIES,
+    }
+
+
+async def _read_upstream_error(response) -> object:
+    try:
+        body = await response.text()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        return {'type': type(exc).__name__, 'message': str(exc)}
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return body
+
+
+def _inspect_sse_probe(buffer: bytes) -> tuple[str, object | None]:
+    """Return pending, usable, or error while no model data has been exposed."""
+    normalized = buffer.replace(b'\r\n', b'\n')
+    complete_events = normalized.split(b'\n\n')[:-1]
+    if not complete_events:
+        return 'pending', None
+
+    for event in complete_events:
+        data_lines = []
+        for raw_line in event.splitlines():
+            line = raw_line.strip()
+            if line.startswith(b'data:'):
+                data_lines.append(line[len(b'data:') :].strip())
+
+        if not data_lines:
+            continue
+
+        payload = b'\n'.join(data_lines)
+        if not payload or payload == b'[DONE]':
+            continue
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return 'usable', None
+
+        if isinstance(data, dict):
+            if data.get('error'):
+                return 'error', data['error']
+            if data.get('type') in {'error', 'response.failed', 'response.incomplete'}:
+                return 'error', data.get('error') or data
+
+            choices = data.get('choices')
+            if isinstance(choices, list):
+                for choice in choices:
+                    if not isinstance(choice, dict):
+                        continue
+                    delta = choice.get('delta') or {}
+                    message = choice.get('message') or {}
+                    for item in (delta, message):
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get('content') or item.get('reasoning_content'):
+                            return 'usable', None
+                        if item.get('tool_calls') or item.get('function_call'):
+                            return 'usable', None
+                continue
+
+            event_type = data.get('type', '')
+            if event_type.endswith('.delta') and data.get('delta'):
+                return 'usable', None
+            if event_type in {'response.output_item.added', 'response.output_item.done'}:
+                item = data.get('item') or {}
+                if item.get('type') in {'function_call', 'tool_call'}:
+                    return 'usable', None
+                continue
+
+            if data.get('content'):
+                return 'usable', None
+            if event_type:
+                continue
+
+        return 'usable', None
+
+    return 'pending', None
+
+
+async def _retrying_chat_stream(
+    response,
+    request_factory,
+    retry_count: int = 0,
+    content_handler=None,
+    retry_status_callback=None,
+):
+    """Retry only before the first usable SSE event to avoid duplicate output."""
+    current_response = response
+
+    while True:
+        buffered_chunks = []
+        probe = bytearray()
+        usable_data_seen = False
+        failure_detail = None
+        failure_status = 502
+
+        try:
+            stream = content_handler(current_response.content) if content_handler else current_response.content
+            async for chunk in stream:
+                if usable_data_seen:
+                    yield chunk
+                    continue
+
+                buffered_chunks.append(chunk)
+                probe.extend(chunk if isinstance(chunk, bytes) else chunk.encode())
+                state, detail = _inspect_sse_probe(bytes(probe))
+                if state == 'error':
+                    failure_detail = detail
+                    break
+                if state == 'usable':
+                    usable_data_seen = True
+                    for buffered_chunk in buffered_chunks:
+                        yield buffered_chunk
+                    buffered_chunks.clear()
+
+            if usable_data_seen:
+                return
+            if failure_detail is None:
+                failure_detail = 'Upstream stream ended before producing usable data'
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if usable_data_seen:
+                raise HTTPException(
+                    status_code=502,
+                    detail=_structured_upstream_error(
+                        {'type': type(exc).__name__, 'message': str(exc)},
+                        502,
+                        retry_count,
+                    ),
+                ) from exc
+            failure_detail = {'type': type(exc).__name__, 'message': str(exc)}
+        finally:
+            await cleanup_response(current_response)
+
+        while retry_count < _CHAT_COMPLETION_MAX_RETRIES:
+            retry_count += 1
+            if retry_status_callback:
+                await retry_status_callback(retry_count)
+            await _retry_backoff(retry_count)
+
+            try:
+                candidate_response = await request_factory()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                failure_detail = {'type': type(exc).__name__, 'message': str(exc)}
+                continue
+
+            candidate_status = candidate_response.status
+            if candidate_status >= 400:
+                failure_detail = await _read_upstream_error(candidate_response)
+                failure_status = candidate_status
+                await cleanup_response(candidate_response)
+                if not _is_retryable_upstream_status(candidate_status):
+                    error = _structured_upstream_error(failure_detail, candidate_status, retry_count)
+                    yield f'data: {json.dumps({"error": error})}\n\n'
+                    return
+                continue
+
+            if 'text/event-stream' not in candidate_response.headers.get('Content-Type', ''):
+                failure_detail = 'Upstream retry did not return an event stream'
+                await cleanup_response(candidate_response)
+                continue
+
+            current_response = candidate_response
+            break
+        else:
+            error = _structured_upstream_error(
+                failure_detail,
+                failure_status,
+                retry_count,
+            )
+            yield f'data: {json.dumps({"error": error})}\n\n'
+            return
 
 
 async def send_get_request(
@@ -1236,44 +1478,72 @@ async def generate_chat_completion(
     r = None
     streaming = False
     response = None
+    retry_count = 0
 
     try:
         session = await get_session()
 
-        r = await session.request(
-            method='POST',
-            url=request_url,
-            data=payload,
-            headers=headers,
-            cookies=cookies,
-            ssl=AIOHTTP_CLIENT_SESSION_SSL,
-            timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
-        )
+        async def request_upstream():
+            return await session.request(
+                method='POST',
+                url=request_url,
+                data=payload,
+                headers=headers,
+                cookies=cookies,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+                timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
+            )
+
+        while True:
+            try:
+                r = await request_upstream()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if retry_count >= _CHAT_COMPLETION_MAX_RETRIES:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=_structured_upstream_error(
+                            {'type': type(exc).__name__, 'message': str(exc)},
+                            500,
+                            retry_count,
+                        ),
+                    ) from exc
+                retry_count += 1
+                await _emit_retry_status(request, retry_count)
+                await _retry_backoff(retry_count)
+                continue
+
+            if r.status < 400:
+                break
+
+            error_detail = await _read_upstream_error(r)
+            status_code = r.status
+            await cleanup_response(r)
+            r = None
+
+            if _is_retryable_upstream_status(status_code) and retry_count < _CHAT_COMPLETION_MAX_RETRIES:
+                retry_count += 1
+                await _emit_retry_status(request, retry_count)
+                await _retry_backoff(retry_count)
+                continue
+
+            return JSONResponse(
+                status_code=status_code,
+                content={'error': _structured_upstream_error(error_detail, status_code, retry_count)},
+            )
 
         # Check if response is SSE
         if 'text/event-stream' in r.headers.get('Content-Type', ''):
-            # If the provider returned an error status with SSE content-type,
-            # read the body and return a proper error response instead of
-            # streaming the error back (which hides the error from logs).
-            if r.status >= 400:
-                error_body = await r.text()
-                log.error(
-                    'Provider returned HTTP %d with SSE content-type: %s',
-                    r.status,
-                    error_body[:1000],
-                )
-                try:
-                    error_json = json.loads(error_body)
-                    return JSONResponse(status_code=r.status, content=error_json)
-                except json.JSONDecodeError:
-                    return JSONResponse(
-                        status_code=r.status,
-                        content={'error': {'message': error_body, 'code': r.status}},
-                    )
-
             streaming = True
             return StreamingResponse(
-                stream_wrapper(r, content_handler=stream_chunks_handler),
+                _retrying_chat_stream(
+                    r,
+                    request_upstream,
+                    retry_count=retry_count,
+                    content_handler=stream_chunks_handler,
+                    retry_status_callback=lambda count: _emit_retry_status(request, count),
+                ),
                 status_code=r.status,
                 headers=_clean_proxy_headers(r.headers),
             )
@@ -1295,12 +1565,20 @@ async def generate_chat_completion(
                 response = convert_responses_result(response)
 
             return response
+    except asyncio.CancelledError:
+        raise
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception(e)
 
         raise HTTPException(
             status_code=r.status if r else 500,
-            detail=ERROR_MESSAGES.SERVER_CONNECTION_ERROR,
+            detail=_structured_upstream_error(
+                {'type': type(e).__name__, 'message': str(e)},
+                r.status if r else 500,
+                retry_count,
+            ),
         )
     finally:
         if not streaming:

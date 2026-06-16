@@ -1469,6 +1469,33 @@ class ChatTable:
             log.info(f"Count of chats for folder '{folder_id}': {count}")
             return count
 
+    async def get_chat_count_by_user(
+        self,
+        start_date: Optional[int] = None,
+        end_date: Optional[int] = None,
+        user_ids: Optional[list[str]] = None,
+        group_id: Optional[str] = None,
+        db: Optional[AsyncSession] = None,
+    ) -> dict[str, int]:
+        async with get_async_db_context(db) as db:
+            from open_webui.models.groups import GroupMember
+
+            stmt = select(Chat.user_id, func.count(Chat.id).label('count')).filter(Chat.user_id.isnot(None))
+
+            if start_date:
+                stmt = stmt.filter(Chat.created_at >= start_date)
+            if end_date:
+                stmt = stmt.filter(Chat.created_at <= end_date)
+            if user_ids:
+                stmt = stmt.filter(Chat.user_id.in_(user_ids))
+            if group_id:
+                group_users = select(GroupMember.user_id).filter(GroupMember.group_id == group_id).scalar_subquery()
+                stmt = stmt.filter(Chat.user_id.in_(group_users))
+
+            stmt = stmt.group_by(Chat.user_id)
+            result = await db.execute(stmt)
+            return {row.user_id: row.count for row in result.all()}
+
     async def delete_tag_by_id_and_user_id_and_tag_name(
         self, id: str, user_id: str, tag_name: str, db: Optional[AsyncSession] = None
     ) -> bool:

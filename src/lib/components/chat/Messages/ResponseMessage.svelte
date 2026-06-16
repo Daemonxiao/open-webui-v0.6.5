@@ -76,6 +76,12 @@
 			done: boolean;
 			action: string;
 			description: string;
+			hidden?: boolean;
+			retry_count?: number;
+			retryCount?: number;
+			retry_attempt?: number;
+			retryAttempt?: number;
+			max_retries?: number;
 			urls?: string[];
 			query?: string;
 		}[];
@@ -83,11 +89,21 @@
 			done: boolean;
 			action: string;
 			description: string;
+			hidden?: boolean;
+			retry_count?: number;
+			retryCount?: number;
+			retry_attempt?: number;
+			retryAttempt?: number;
+			max_retries?: number;
 			urls?: string[];
 			query?: string;
 		};
 		done: boolean;
 		error?: boolean | { content: string };
+		request_id?: string;
+		requestId?: string;
+		retry_count?: number;
+		retryCount?: number;
 		sources?: string[];
 		code_executions?: {
 			uuid: string;
@@ -175,6 +191,41 @@
 		(model?.info?.meta?.capabilities?.status_updates ?? true) &&
 		statusEntries.length > 0 &&
 		!(statusEntries.at(-1)?.hidden ?? false);
+	$: latestStatus = hasVisibleStatus ? statusEntries.at(-1) : null;
+	$: latestStatusText =
+		`${latestStatus?.action ?? ''} ${latestStatus?.description ?? ''}`.toLowerCase();
+	$: retryStatus =
+		latestStatus &&
+		(latestStatusText.includes('retry') ||
+			[
+				latestStatus?.retry_count,
+				latestStatus?.retryCount,
+				latestStatus?.retry_attempt,
+				latestStatus?.retryAttempt
+			].some((value) => Number(value) > 0))
+			? latestStatus
+			: null;
+	const hasNonReasoningContent = (content: string) => {
+		const trimmed = content.trim();
+		if (!trimmed) return false;
+		if (!trimmed.startsWith('<details type="reasoning"')) return true;
+
+		return (
+			trimmed.replace(/<details type="reasoning"[^>]*>[\s\S]*?<\/details>/g, '').trim().length > 0
+		);
+	};
+	$: hasAssistantAnswer =
+		Array.isArray(message?.output) && message.output.length > 0
+			? message.output.some(
+					(item) =>
+						item?.type === 'message' &&
+						item?.content?.some(
+							(part) => part?.type === 'output_text' && (part?.text ?? '').trim().length > 0
+						)
+				)
+			: hasNonReasoningContent(message.content);
+	$: showWaiting =
+		!message.done && !message.error && !hasAssistantAnswer && (!hasVisibleStatus || retryStatus);
 
 	let edit = false;
 	let editedContent = '';
@@ -695,7 +746,7 @@
 			<div>
 				<div class="chat-{message.role} w-full min-w-full markdown-prose">
 					<div>
-						{#if model?.info?.meta?.capabilities?.status_updates ?? true}
+						{#if (model?.info?.meta?.capabilities?.status_updates ?? true) && !retryStatus}
 							<StatusHistory statusHistory={message?.statusHistory} />
 						{/if}
 
@@ -826,9 +877,11 @@
 							class="w-full flex flex-col relative {edit ? 'hidden' : ''}"
 							id="response-content-container"
 						>
-							{#if message.content === '' && !message.done && !message.error && !hasVisibleStatus}
-								<Skeleton />
-							{:else if message.content && message.error !== true}
+							{#if showWaiting}
+								<Skeleton status={retryStatus} />
+							{/if}
+
+							{#if message.content && message.error !== true}
 								<!-- always show message contents even if there's an error -->
 								<!-- unless message.error === true which is legacy error handling, where the error message is stored in message.content -->
 								<ContentRenderer
@@ -870,7 +923,16 @@
 							{/if}
 
 							{#if message?.error}
-								<Error content={message?.error?.content ?? message.content} />
+								<Error
+									content={message.error}
+									requestId={message?.request_id ?? message?.requestId ?? null}
+									retryCount={message?.retry_count ?? message?.retryCount ?? null}
+									onRegenerate={!readOnly &&
+									($user?.role === 'admin' ||
+										($user?.permissions?.chat?.regenerate_response ?? true))
+										? () => regenerateResponse(message)
+										: null}
+								/>
 							{/if}
 
 							{#if (message?.sources || message?.citations) && (model?.info?.meta?.capabilities?.citations ?? true)}

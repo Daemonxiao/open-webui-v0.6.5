@@ -2005,9 +2005,18 @@ async def chat_completion(
 
     async def process_chat(request, form_data, user, metadata, model, tasks=None):
         try:
+            request.state.llm_retry_event_emitter = await get_event_emitter(metadata)
             form_data, metadata, events = await process_chat_payload(request, form_data, user, metadata, model)
 
             response = await chat_completion_handler(request, form_data, user)
+
+            retry_events = getattr(request.state, 'llm_retry_events', [])
+            if retry_events:
+                request.state.llm_retry_events = []
+                event_emitter = request.state.llm_retry_event_emitter
+                if event_emitter:
+                    for retry_event in retry_events:
+                        await event_emitter(retry_event)
 
             # When the upstream provider returns an error (e.g. HTTP 400
             # content-filter, quota exceeded), generate_chat_completion
@@ -2018,11 +2027,9 @@ async def chat_completion(
                 try:
                     error_body = json.loads(response.body.decode('utf-8', 'replace'))
                     detail = error_body.get('error', error_body) if isinstance(error_body, dict) else error_body
-                    if isinstance(detail, dict):
-                        detail = detail.get('message', detail.get('detail', str(detail)))
                 except Exception:
                     detail = f'Provider returned HTTP {response.status_code}'
-                raise Exception(detail)
+                raise HTTPException(status_code=response.status_code, detail=detail)
 
             ctx = await build_chat_response_context(request, form_data, user, model, metadata, tasks, events)
 
@@ -2042,6 +2049,13 @@ async def chat_completion(
             raise  # re-raise to ensure proper task cancellation handling
         except Exception as e:
             error_detail = e.detail if isinstance(e, HTTPException) else str(e)
+            if isinstance(error_detail, dict):
+                error_payload = {
+                    'content': error_detail.get('message') or error_detail.get('detail') or str(error_detail),
+                    **error_detail,
+                }
+            else:
+                error_payload = {'content': error_detail}
             log.error('Error processing chat payload: %s', error_detail)
             if metadata.get('chat_id') and metadata.get('message_id'):
                 # Update the chat message with the error
@@ -2052,7 +2066,7 @@ async def chat_completion(
                             metadata['message_id'],
                             {
                                 'parentId': metadata.get('user_message_id', None),
-                                'error': {'content': error_detail},
+                                'error': error_payload,
                             },
                         )
 
@@ -2061,7 +2075,7 @@ async def chat_completion(
                         await event_emitter(
                             {
                                 'type': 'chat:message:error',
-                                'data': {'error': {'content': error_detail}},
+                                'data': {'error': error_payload},
                             }
                         )
                         await event_emitter(
