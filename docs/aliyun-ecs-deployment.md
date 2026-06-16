@@ -136,7 +136,7 @@ gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai
 
 Then rerun `Deploy Open WebUI to Alibaba Cloud`.
 
-The usage reconcile worker runs as a separate container on the same `open-webui` Docker network. It exposes `USAGE_RECONCILE_WORKER_PORT`, default `3080`, on the ECS public EIP for Feishu event subscriptions. It receives the same New API `SQL_DSN`, `SESSION_SECRET`, and `CRYPTO_SECRET` values as the gateway so it can reconcile usage data against the New API database. It also receives GitHub Actions environment variables and explicitly wired secrets whose names start with `PROD_USAGE_RECONCILE_`.
+The usage reconcile worker runs as a separate container on the same `open-webui` Docker network. It exposes `USAGE_RECONCILE_WORKER_PORT`, default `3080`, on the ECS public EIP for Feishu event subscriptions. It receives the same New API `SQL_DSN`, `SESSION_SECRET`, and `CRYPTO_SECRET` values as the gateway so it can reconcile usage data against the New API database. It also receives GitHub Actions environment variables and explicitly wired secrets whose names start with `PROD_USAGE_RECONCILE_`. The deploy scripts map `PROD_USAGE_RECONCILE_PAT` into the runtime `USAGE_RECONCILE_PAT` variable expected by the image and set `USAGE_RECONCILE_SCOPE=tenant`.
 
 ## Database And Redis
 
@@ -151,7 +151,8 @@ Terraform also creates a separate PostgreSQL database and account for New API in
 
 The New API deploy also injects:
 
-- `PROD_USAGE_RECONCILE_PAT`
+- `USAGE_RECONCILE_PAT`, sourced from the `PROD_USAGE_RECONCILE_PAT` GitHub secret
+- `USAGE_RECONCILE_SCOPE=tenant`
 
 The Open WebUI and New API databases are intentionally separate even though they share one RDS instance. This avoids schema and migration coupling between the two applications.
 

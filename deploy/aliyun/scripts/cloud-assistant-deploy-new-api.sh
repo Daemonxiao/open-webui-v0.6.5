@@ -201,7 +201,8 @@ main() {
     printf 'SQL_DSN=%s\n' "$NEW_API_DATABASE_URL"
     printf 'SESSION_SECRET=%s\n' "$NEW_API_SESSION_SECRET"
     printf 'CRYPTO_SECRET=%s\n' "$NEW_API_CRYPTO_SECRET"
-    printf 'PROD_USAGE_RECONCILE_PAT=%s\n' "$PROD_USAGE_RECONCILE_PAT"
+    printf 'USAGE_RECONCILE_PAT=%s\n' "$PROD_USAGE_RECONCILE_PAT"
+    printf 'USAGE_RECONCILE_SCOPE=tenant\n'
     printf 'MEMORY_CACHE_ENABLED=true\n'
     printf 'BATCH_UPDATE_ENABLED=true\n'
   } > "$env_new_api"
