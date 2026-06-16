@@ -195,7 +195,9 @@ resource "alicloud_instance" "app" {
 
   lifecycle {
     ignore_changes = [
+      force_delete,
       image_id,
+      include_data_disks,
       instance_charge_type,
     ]
   }
