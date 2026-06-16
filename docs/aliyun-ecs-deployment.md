@@ -136,7 +136,7 @@ gh secret set NEW_API_OPENWEBUI_TOKEN --env aliyun-hai
 
 Then rerun `Deploy Open WebUI to Alibaba Cloud`.
 
-The usage reconcile worker runs as a separate container on the same `open-webui` Docker network. It exposes `USAGE_RECONCILE_WORKER_PORT`, default `3080`, on the ECS public EIP for Feishu event subscriptions. It receives the same New API `SQL_DSN`, `SESSION_SECRET`, and `CRYPTO_SECRET` values as the gateway so it can reconcile usage data against the New API database. It also receives GitHub Actions environment variables whose names start with `PROD_`, plus explicitly wired `PROD_` secrets such as `PROD_USAGE_RECONCILE_PAT`.
+The usage reconcile worker runs as a separate container on the same `open-webui` Docker network. It exposes `USAGE_RECONCILE_WORKER_PORT`, default `3080`, on the ECS public EIP for Feishu event subscriptions. It receives the same New API `SQL_DSN`, `SESSION_SECRET`, and `CRYPTO_SECRET` values as the gateway so it can reconcile usage data against the New API database. It also receives GitHub Actions environment variables and explicitly wired secrets whose names start with `PROD_USAGE_RECONCILE_`.
 
 ## Database And Redis
 
