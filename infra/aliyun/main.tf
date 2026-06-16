@@ -192,6 +192,13 @@ resource "alicloud_instance" "app" {
   }))
 
   tags = local.tags
+
+  lifecycle {
+    ignore_changes = [
+      image_id,
+      instance_charge_type,
+    ]
+  }
 }
 
 resource "alicloud_ecs_ram_role_attachment" "app" {
@@ -206,6 +213,12 @@ resource "alicloud_eip_address" "app" {
   payment_type         = "PayAsYouGo"
 
   tags = local.tags
+
+  lifecycle {
+    ignore_changes = [
+      bandwidth,
+    ]
+  }
 }
 
 resource "alicloud_eip_association" "app" {
@@ -277,6 +290,12 @@ resource "alicloud_db_instance" "postgres" {
   tags = local.tags
 
   depends_on = [alicloud_rds_service_linked_role.postgres]
+
+  lifecycle {
+    ignore_changes = [
+      security_ips,
+    ]
+  }
 }
 
 resource "alicloud_db_database" "app" {
