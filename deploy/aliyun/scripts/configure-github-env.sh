@@ -9,6 +9,8 @@ ACR_INSTANCE_ID="${ACR_INSTANCE_ID:-}"
 APP_PORT="${APP_PORT:-3000}"
 NEW_API_PORT="${NEW_API_PORT:-3001}"
 NEW_API_SOURCE_IMAGE="${NEW_API_SOURCE_IMAGE:-ghcr.io/heibaijian/tokenfun:latest}"
+USAGE_RECONCILE_WORKER_SOURCE_IMAGE="${USAGE_RECONCILE_WORKER_SOURCE_IMAGE:-ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest}"
+USAGE_RECONCILE_WORKER_PORT="${USAGE_RECONCILE_WORKER_PORT:-3080}"
 TF_LOCK_INSTANCE="${TF_LOCK_INSTANCE:-ow-hai-tf-lock}"
 TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform_locks}"
 
@@ -129,6 +131,8 @@ main() {
   set_var APP_PORT "$APP_PORT"
   set_var NEW_API_PORT "$NEW_API_PORT"
   set_var NEW_API_SOURCE_IMAGE "$NEW_API_SOURCE_IMAGE"
+  set_var USAGE_RECONCILE_WORKER_SOURCE_IMAGE "$USAGE_RECONCILE_WORKER_SOURCE_IMAGE"
+  set_var USAGE_RECONCILE_WORKER_PORT "$USAGE_RECONCILE_WORKER_PORT"
   set_var TF_STATE_BUCKET "$tf_state_bucket"
   set_var TF_LOCK_INSTANCE "$TF_LOCK_INSTANCE"
   set_var TF_LOCK_TABLE "$TF_LOCK_TABLE"
@@ -137,12 +141,22 @@ main() {
   set_secret ALIYUN_ACCESS_KEY_SECRET "$(prompt_secret ALIYUN_ACCESS_KEY_SECRET)"
   set_secret NEW_API_SESSION_SECRET "$(secret_or_generate NEW_API_SESSION_SECRET)"
   set_secret NEW_API_CRYPTO_SECRET "$(secret_or_generate NEW_API_CRYPTO_SECRET)"
+  set_secret PROD_USAGE_RECONCILE_FEISHU_APP_SECRET "$(prompt_secret PROD_USAGE_RECONCILE_FEISHU_APP_SECRET)"
+  set_secret PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN "$(prompt_secret PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN)"
+  set_secret PROD_USAGE_RECONCILE_PAT "$(prompt_secret PROD_USAGE_RECONCILE_PAT)"
 
   if [ -n "${ACR_USERNAME:-}" ] || [ -n "${ACR_PASSWORD:-}" ] || prompt_yes_no CONFIGURE_ACR_CREDENTIALS n; then
     set_secret ACR_USERNAME "$(prompt_secret ACR_USERNAME)"
     set_secret ACR_PASSWORD "$(prompt_secret ACR_PASSWORD)"
   else
     echo "Skipping ACR_USERNAME/ACR_PASSWORD. Workflows will try ACR temporary credentials from Aliyun AK/SK."
+  fi
+
+  if [ -n "${GHCR_USERNAME:-}" ] || [ -n "${GHCR_TOKEN:-}" ]; then
+    set_secret GHCR_USERNAME "$(prompt_secret GHCR_USERNAME)"
+    set_secret GHCR_TOKEN "$(prompt_secret GHCR_TOKEN)"
+  else
+    echo "Skipping GHCR_USERNAME/GHCR_TOKEN. Set them only if the worker image is private."
   fi
 
   if [ -f .env.hai ]; then

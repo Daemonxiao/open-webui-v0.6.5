@@ -1,0 +1,9 @@
+services:
+  usage-reconcile-worker:
+    image: ${USAGE_RECONCILE_WORKER_IMAGE:-ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest}
+    container_name: usage-reconcile-worker-hai
+    ports:
+      - "${USAGE_RECONCILE_WORKER_PORT:-3080}:3080"
+    env_file:
+      - .env.usage-reconcile-worker
+    restart: unless-stopped

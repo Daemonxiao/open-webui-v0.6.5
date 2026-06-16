@@ -58,6 +58,18 @@ variable "new_api_ingress_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "usage_reconcile_worker_port" {
+  description = "Public TCP port for the usage reconcile worker Feishu event endpoint."
+  type        = number
+  default     = 3080
+}
+
+variable "usage_reconcile_worker_ingress_cidr_blocks" {
+  description = "CIDR blocks allowed to reach the usage reconcile worker public port."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "ssh_ingress_cidr_blocks" {
   description = "Optional CIDR blocks allowed to reach SSH. Empty keeps SSH closed."
   type        = list(string)
