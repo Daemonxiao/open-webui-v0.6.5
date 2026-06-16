@@ -152,6 +152,8 @@ jobs:
           test -n "$USAGE_RECONCILE_WORKER_PORT"
           test -n "$NEW_API_SESSION_SECRET"
           test -n "$NEW_API_CRYPTO_SECRET"
+          test -n "$PROD_USAGE_RECONCILE_FEISHU_APP_SECRET"
+          test -n "$PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN"
           test -n "$PROD_USAGE_RECONCILE_PAT"
 
       - name: Setup Terraform

@@ -124,15 +124,14 @@ decode_maybe_base64() {
   fi
 }
 
-append_secret_env_if_set() {
+append_required_secret_env() {
   local file="$1"
   local name="$2"
   local value="${!name:-}"
 
-  if [ -n "$value" ]; then
-    mask_value "$value"
-    printf '%s=%s\n' "$name" "$value" >> "$file"
-  fi
+  required_env "$name"
+  mask_value "$value"
+  printf '%s=%s\n' "$name" "$value" >> "$file"
 }
 
 append_prod_vars_from_json() {
@@ -194,6 +193,8 @@ main() {
   required_env NEW_API_DATABASE_URL
   required_env NEW_API_SESSION_SECRET
   required_env NEW_API_CRYPTO_SECRET
+  required_env PROD_USAGE_RECONCILE_FEISHU_APP_SECRET
+  required_env PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
   required_env PROD_USAGE_RECONCILE_PAT
 
   local compose_env="$TMP_DIR/compose.env"
@@ -207,6 +208,8 @@ main() {
   mask_value "$NEW_API_DATABASE_URL"
   mask_value "$NEW_API_SESSION_SECRET"
   mask_value "$NEW_API_CRYPTO_SECRET"
+  mask_value "$PROD_USAGE_RECONCILE_FEISHU_APP_SECRET"
+  mask_value "$PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN"
   mask_value "$PROD_USAGE_RECONCILE_PAT"
   resolve_worker_pull_image
 
@@ -226,9 +229,9 @@ main() {
     printf 'BATCH_UPDATE_ENABLED=true\n'
   } > "$env_worker"
   append_prod_vars_from_json "$env_worker"
-  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_FEISHU_APP_SECRET
-  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
-  append_secret_env_if_set "$env_worker" PROD_USAGE_RECONCILE_PAT
+  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_FEISHU_APP_SECRET
+  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
+  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_PAT
 
   resolve_acr_credentials
   docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"

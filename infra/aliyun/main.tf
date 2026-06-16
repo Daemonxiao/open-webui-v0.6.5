@@ -292,12 +292,6 @@ resource "alicloud_db_instance" "postgres" {
   tags = local.tags
 
   depends_on = [alicloud_rds_service_linked_role.postgres]
-
-  lifecycle {
-    ignore_changes = [
-      security_ips,
-    ]
-  }
 }
 
 resource "alicloud_db_database" "app" {
