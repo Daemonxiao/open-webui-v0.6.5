@@ -120,6 +120,8 @@ jobs:
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       NEW_API_SESSION_SECRET: ${{ secrets.NEW_API_SESSION_SECRET }}
       NEW_API_CRYPTO_SECRET: ${{ secrets.NEW_API_CRYPTO_SECRET }}
+      PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER: ${{ vars.PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER }}
+      PROD_USAGE_RECONCILE_USERNAME_MAP: ${{ vars.PROD_USAGE_RECONCILE_USERNAME_MAP }}
       PROD_USAGE_RECONCILE_PAT: ${{ secrets.PROD_USAGE_RECONCILE_PAT }}
     steps:
       - name: Checkout
@@ -134,6 +136,8 @@ jobs:
           test -n "$NEW_API_PORT"
           test -n "$NEW_API_SESSION_SECRET"
           test -n "$NEW_API_CRYPTO_SECRET"
+          test -n "$PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER"
+          test -n "$PROD_USAGE_RECONCILE_USERNAME_MAP"
           test -n "$PROD_USAGE_RECONCILE_PAT"
 
       - name: Setup Terraform

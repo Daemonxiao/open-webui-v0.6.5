@@ -79,6 +79,8 @@ Environment variables:
 - `NEW_API_SOURCE_IMAGE=ghcr.io/heibaijian/tokenfun:latest`
 - `USAGE_RECONCILE_WORKER_SOURCE_IMAGE=ghcr.io/heibaijian/tokenfun/usage-reconcile-worker:latest`
 - `USAGE_RECONCILE_WORKER_PORT=3080`
+- `PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER=admin`
+- `PROD_USAGE_RECONCILE_USERNAME_MAP=Sparkline:admin`
 - `TF_STATE_BUCKET=<globally-unique-oss-bucket-name>`
 - `TF_LOCK_INSTANCE=ow-hai-tf-lock`
 - `TF_LOCK_TABLE=terraform_locks`
@@ -153,6 +155,8 @@ The New API deploy also injects:
 
 - `USAGE_RECONCILE_PAT`, sourced from the `PROD_USAGE_RECONCILE_PAT` GitHub secret
 - `USAGE_RECONCILE_SCOPE=tenant`
+- `USAGE_RECONCILE_LOCAL_USERNAME_FILTER`, sourced from the `PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER` GitHub variable
+- `USAGE_RECONCILE_USERNAME_MAP`, sourced from the `PROD_USAGE_RECONCILE_USERNAME_MAP` GitHub variable
 
 The Open WebUI and New API databases are intentionally separate even though they share one RDS instance. This avoids schema and migration coupling between the two applications.
 
