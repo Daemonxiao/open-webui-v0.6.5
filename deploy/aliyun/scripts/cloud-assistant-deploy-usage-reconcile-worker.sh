@@ -124,21 +124,22 @@ decode_maybe_base64() {
   fi
 }
 
-append_required_secret_env() {
+append_required_secret_env_as() {
   local file="$1"
-  local name="$2"
-  local value="${!name:-}"
+  local source_name="$2"
+  local target_name="$3"
+  local value="${!source_name:-}"
 
-  required_env "$name"
+  required_env "$source_name"
   mask_value "$value"
-  printf '%s=%s\n' "$name" "$value" >> "$file"
+  printf '%s=%s\n' "$target_name" "$value" >> "$file"
 }
 
 append_usage_reconcile_vars_from_json() {
   local file="$1"
 
   if [ -n "${PROD_GITHUB_VARS_JSON:-}" ]; then
-    jq -r 'to_entries[] | select(.key | startswith("PROD_USAGE_RECONCILE_")) | "\(.key)=\(.value)"' \
+    jq -r 'to_entries[] | select(.key | startswith("PROD_USAGE_RECONCILE_")) | "\(.key | sub("^PROD_"; ""))=\(.value)"' \
       <<< "$PROD_GITHUB_VARS_JSON" >> "$file"
   fi
 }
@@ -227,13 +228,14 @@ main() {
     printf 'CRYPTO_SECRET=%s\n' "$NEW_API_CRYPTO_SECRET"
     printf 'USAGE_RECONCILE_PAT=%s\n' "$PROD_USAGE_RECONCILE_PAT"
     printf 'USAGE_RECONCILE_SCOPE=tenant\n'
+    printf 'USAGE_RECONCILE_FEISHU_HTTP_ADDR=0.0.0.0:3080\n'
+    printf 'USAGE_RECONCILE_FEISHU_EVENT_PATH=/feishu/usage-reconcile/events\n'
     printf 'MEMORY_CACHE_ENABLED=true\n'
     printf 'BATCH_UPDATE_ENABLED=true\n'
   } > "$env_worker"
   append_usage_reconcile_vars_from_json "$env_worker"
-  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_FEISHU_APP_SECRET
-  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
-  append_required_secret_env "$env_worker" PROD_USAGE_RECONCILE_PAT
+  append_required_secret_env_as "$env_worker" PROD_USAGE_RECONCILE_FEISHU_APP_SECRET USAGE_RECONCILE_FEISHU_APP_SECRET
+  append_required_secret_env_as "$env_worker" PROD_USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN USAGE_RECONCILE_FEISHU_VERIFICATION_TOKEN
 
   resolve_acr_credentials
   docker_auth="$(printf '%s:%s' "$ACR_LOGIN_USERNAME" "$ACR_LOGIN_PASSWORD" | base64 | tr -d '\n')"
