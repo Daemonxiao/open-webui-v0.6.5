@@ -265,9 +265,39 @@ class ChatStatsExport(BaseModel):
 
 
 class ChatTable:
+    REQUIRED_MESSAGE_FIELDS = frozenset({'id', 'role', 'parentId', 'childrenIds'})
+
     def _clean_null_bytes(self, obj):
         """Recursively remove null bytes from strings in dict/list structures."""
         return sanitize_data_for_db(obj)
+
+    def _is_structured_history_message(self, message_id: str, message: dict) -> bool:
+        if not isinstance(message, dict):
+            return False
+        if not self.REQUIRED_MESSAGE_FIELDS.issubset(message.keys()):
+            return False
+        return (
+            message.get('id') == message_id
+            and bool(message.get('role'))
+            and isinstance(message.get('childrenIds'), list)
+        )
+
+    async def _recover_messages_from_normalized_store(
+        self, id: str, history_messages: dict, message_id: str
+    ) -> Optional[dict]:
+        messages_map = await ChatMessages.get_messages_map_by_chat_id(id)
+        if not messages_map:
+            return None
+
+        recovered_message = messages_map.get(message_id)
+        if not self._is_structured_history_message(message_id, recovered_message):
+            return None
+
+        for recovered_id, recovered in messages_map.items():
+            if recovered_id not in history_messages and self._is_structured_history_message(recovered_id, recovered):
+                history_messages[recovered_id] = recovered
+
+        return recovered_message
 
     def _sanitize_chat_row(self, chat_item):
         """
@@ -551,25 +581,44 @@ class ChatTable:
     async def upsert_message_to_chat_by_id_and_message_id(
         self, id: str, message_id: str, message: dict
     ) -> Optional[ChatModel]:
-        chat = await self.get_chat_by_id(id)
-        if chat is None:
+        chat_model = await self.get_chat_by_id(id)
+        if chat_model is None:
             return None
+
+        message = dict(message)
 
         # Sanitize message content for null characters before upserting
         if isinstance(message.get('content'), str):
             message['content'] = sanitize_text_for_db(message['content'])
 
-        user_id = chat.user_id
-        chat = chat.chat
+        user_id = chat_model.user_id
+        chat = chat_model.chat
         history = chat.get('history', {})
+        history_messages = history.setdefault('messages', {})
 
-        if message_id in history.get('messages', {}):
-            history['messages'][message_id] = {
-                **history['messages'][message_id],
+        existing_message = history_messages.get(message_id)
+        if isinstance(existing_message, dict):
+            message = {
+                **existing_message,
                 **message,
             }
-        else:
-            history['messages'][message_id] = message
+
+        if not self._is_structured_history_message(message_id, message):
+            recovered_message = await self._recover_messages_from_normalized_store(id, history_messages, message_id)
+            if recovered_message:
+                message = {
+                    **recovered_message,
+                    **message,
+                }
+            else:
+                log.warning(
+                    'Skipping partial message upsert for chat %s message %s because no structured message exists',
+                    id,
+                    message_id,
+                )
+                return chat_model
+
+        history_messages[message_id] = message
 
         history['currentId'] = message_id
 
@@ -581,7 +630,7 @@ class ChatTable:
                 message_id=message_id,
                 chat_id=id,
                 user_id=user_id,
-                data=history['messages'][message_id],
+                data=history_messages[message_id],
             )
         except Exception as e:
             log.warning(f'Failed to write to chat_message table: {e}')
