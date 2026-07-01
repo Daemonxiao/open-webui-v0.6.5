@@ -24,6 +24,17 @@ mask_value() {
   fi
 }
 
+append_env_if_set() {
+  local name="$1"
+  local value="${2:-}"
+  local env_file="$3"
+
+  if [ -n "$value" ]; then
+    mask_value "$value"
+    printf '%s=%s\n' "$name" "$value" >> "$env_file"
+  fi
+}
+
 resolve_acr_credentials() {
   if [ -n "${ACR_USERNAME:-}" ] && [ -n "${ACR_PASSWORD:-}" ]; then
     ACR_LOGIN_USERNAME="$ACR_USERNAME"
@@ -228,6 +239,9 @@ main() {
   if [ -n "$tokenfun_usage_admin_key" ]; then
     printf 'TOKENFUN_USAGE_ADMIN_KEY=%s\n' "$tokenfun_usage_admin_key" >> "$env_open_webui"
   fi
+  append_env_if_set NOVEL_EXPERT_BASE_URL "${NOVEL_EXPERT_BASE_URL:-}" "$env_open_webui"
+  append_env_if_set NOVEL_EXPERT_SSO_SECRET "${NOVEL_EXPERT_SSO_SECRET:-}" "$env_open_webui"
+  append_env_if_set NOVEL_EXPERT_SSO_TOKEN_TTL_SECONDS "${NOVEL_EXPERT_SSO_TOKEN_TTL_SECONDS:-}" "$env_open_webui"
   cat > "$prepare_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
