@@ -5,6 +5,7 @@ from urllib.parse import urlencode, urlparse
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from open_webui.config import (
@@ -15,6 +16,7 @@ from open_webui.config import (
 )
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.internal.db import get_async_session
+from open_webui.models.users import Users
 from open_webui.utils.access_control import get_permissions, has_permission
 from open_webui.utils.auth import get_current_user, get_http_authorization_cred, get_verified_user
 
@@ -25,6 +27,23 @@ router = APIRouter()
 _DEFAULT_NEXT = '/generate'
 _ISSUER = 'open-webui'
 _AUDIENCE = 'novel-expert'
+_SERVICE_ISSUER = 'novel-expert'
+_SERVICE_AUDIENCE = 'open-webui'
+_SERVICE_SCOPE = 'novel_expert_user_resolve'
+_MAX_RESOLVE_USER_IDS = 100
+
+
+class ResolveUsersRequest(BaseModel):
+    user_ids: list[str] = Field(default_factory=list)
+
+
+class ResolvedUser(BaseModel):
+    id: str
+    display_name: str
+
+
+class ResolveUsersResponse(BaseModel):
+    users: list[ResolvedUser]
 
 
 def _safe_next(next_path: str | None) -> str:
@@ -59,6 +78,57 @@ async def _get_launch_user(request: Request, response: Response, background_task
     auth_token = get_http_authorization_cred(request.headers.get('Authorization'))
     current_user = await get_current_user(request, response, background_tasks, auth_token)
     return get_verified_user(current_user)
+
+
+def _verify_storyos_service_token(request: Request) -> None:
+    if not NOVEL_EXPERT_SSO_SECRET:
+        log.error('novel_expert_resolve_not_configured')
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='Novel Expert SSO is not configured',
+        )
+
+    auth_header = request.headers.get('Authorization')
+    auth_token = get_http_authorization_cred(auth_header)
+    token = auth_token.credentials if auth_token else None
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Missing service token',
+        )
+
+    try:
+        payload = jwt.decode(
+            token,
+            NOVEL_EXPERT_SSO_SECRET,
+            algorithms=['HS256'],
+            audience=_SERVICE_AUDIENCE,
+            issuer=_SERVICE_ISSUER,
+            options={'require': ['exp']},
+        )
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid service token',
+        ) from exc
+
+    if payload.get('scope') != _SERVICE_SCOPE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid service token scope',
+        )
+
+
+def _dedupe_user_ids(user_ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    resolved: list[str] = []
+    for user_id in user_ids:
+        value = user_id.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        resolved.append(value)
+    return resolved
 
 
 @router.get('/launch')
@@ -137,4 +207,39 @@ async def launch_novel_expert(
     return RedirectResponse(
         url=f'{base_url}/auth/openwebui/callback?{query}',
         status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post('/users/resolve', response_model=ResolveUsersResponse)
+async def resolve_novel_expert_users(
+    body: ResolveUsersRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+) -> ResolveUsersResponse:
+    _verify_storyos_service_token(request)
+
+    user_ids = _dedupe_user_ids(body.user_ids)
+    if len(user_ids) > _MAX_RESOLVE_USER_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'user_ids cannot exceed {_MAX_RESOLVE_USER_IDS}',
+        )
+    if not user_ids:
+        return ResolveUsersResponse(users=[])
+
+    users = await Users.get_users_by_user_ids(user_ids, db=db)
+    users_by_id = {user.id: user for user in users}
+    return ResolveUsersResponse(
+        users=[
+            ResolvedUser(
+                id=user_id,
+                display_name=(
+                    users_by_id[user_id].name
+                    or users_by_id[user_id].email
+                    or users_by_id[user_id].id
+                ),
+            )
+            for user_id in user_ids
+            if user_id in users_by_id
+        ]
     )
