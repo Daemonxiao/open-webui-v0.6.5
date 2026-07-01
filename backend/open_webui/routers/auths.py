@@ -801,6 +801,7 @@ async def signout(request: Request, response: Response, db: AsyncSession = Depen
         await invalidate_token(request, token)
 
     response.delete_cookie('token')
+    response.delete_cookie('owui-session')
     response.delete_cookie('oui-session')
     response.delete_cookie('oauth_id_token')
 

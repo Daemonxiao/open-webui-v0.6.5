@@ -23,6 +23,14 @@ export default defineConfig({
 	build: {
 		sourcemap: true
 	},
+	server: {
+		proxy: {
+			'/api/v1/novel-expert': {
+				target: 'http://localhost:8080',
+				changeOrigin: false
+			}
+		}
+	},
 	worker: {
 		format: 'es'
 	},

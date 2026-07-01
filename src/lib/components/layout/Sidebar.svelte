@@ -72,12 +72,13 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import PinnedModelList from './Sidebar/PinnedModelList.svelte';
 	import Note from '../icons/Note.svelte';
+	import BookOpen from '../icons/BookOpen.svelte';
 	import Code from '../icons/Code.svelte';
 	import { slide } from 'svelte/transition';
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 
 	const BREAKPOINT = 768;
-	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
+	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'storyos'];
 
 	let scrollTop = 0;
 
@@ -105,7 +106,24 @@
 
 	let newFolderId = null;
 
-	$: pinnedItems = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
+	const withStoryOSPinned = (items: string[]) => {
+		if (items.includes('storyos')) {
+			return items;
+		}
+
+		const next = [...items];
+		const workspaceIndex = next.indexOf('workspace');
+		next.splice(workspaceIndex >= 0 ? workspaceIndex + 1 : next.length, 0, 'storyos');
+		return next;
+	};
+
+	$: canSeeStoryOS =
+		($user?.permissions?.features?.novel_expert ?? false) ||
+		($user?.permissions?.features?.novel_expert_manage ?? false) ||
+		($user?.permissions?.features?.novel_expert_super_admin ?? false);
+	$: pinnedItems = canSeeStoryOS
+		? withStoryOSPinned($settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS)
+		: ($settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS);
 
 	const isMenuItemVisible = (id) => {
 		switch (id) {
@@ -133,6 +151,8 @@
 					$config?.features?.enable_calendar &&
 					($user?.role === 'admin' || $user?.permissions?.features?.calendar)
 				);
+			case 'storyos':
+				return canSeeStoryOS;
 			case 'playground':
 				return $user?.role === 'admin';
 			default:
@@ -146,6 +166,11 @@
 			workspace: { label: 'Workspace', href: '/workspace', iconType: 'workspace' },
 			automations: { label: 'Automations', href: '/automations', iconType: 'automations' },
 			calendar: { label: 'Calendar', href: '/calendar', iconType: 'calendar' },
+			storyos: {
+				label: 'StoryOS 创作台',
+				href: `${WEBUI_API_BASE_URL}/novel-expert/launch?next=/generate`,
+				iconType: 'storyos'
+			},
 			playground: { label: 'Playground', href: '/playground', iconType: 'playground' }
 		};
 		return items[id];
@@ -1166,6 +1191,8 @@
 												</svg>
 											{:else if itemId === 'playground'}
 												<Code className="size-4.5" strokeWidth="2" />
+											{:else if itemId === 'storyos'}
+												<BookOpen className="size-4.5" strokeWidth="2" />
 											{/if}
 										</div>
 

@@ -64,7 +64,10 @@ export const DEFAULT_PERMISSIONS = {
 		code_interpreter: true,
 		memories: true,
 		automations: false,
-		calendar: true
+		calendar: true,
+		novel_expert: false,
+		novel_expert_manage: false,
+		novel_expert_super_admin: false
 	},
 	settings: {
 		interface: true

@@ -115,7 +115,8 @@
 	};
 
 	const oauthCallbackHandler = async () => {
-		// Get the value of the 'token' cookie
+		// Rehydrate the frontend session from either a readable OAuth token cookie
+		// or the backend-managed HttpOnly token cookie.
 		function getCookie(name) {
 			const match = document.cookie.match(
 				new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
@@ -123,21 +124,17 @@
 			return match ? decodeURIComponent(match[1]) : null;
 		}
 
-		const token = getCookie('token');
-		if (!token) {
-			return;
-		}
+		const token = getCookie('token') || localStorage.getItem('token');
 
-		const sessionUser = await getSessionUser(token).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
+		const sessionUser = await getSessionUser(token).catch(() => null);
 
 		if (!sessionUser) {
 			return;
 		}
 
-		localStorage.token = token;
+		if (sessionUser.token) {
+			localStorage.token = sessionUser.token;
+		}
 		await setSessionUser(sessionUser, localStorage.getItem('redirectPath') || null);
 	};
 

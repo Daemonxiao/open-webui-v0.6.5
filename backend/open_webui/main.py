@@ -88,6 +88,7 @@ from open_webui.routers import (
     channels,
     chats,
     notes,
+    novel_expert,
     folders,
     configs,
     groups,
@@ -1458,6 +1459,7 @@ app.include_router(utils.router, prefix='/api/v1/utils', tags=['utils'])
 app.include_router(terminals.router, prefix='/api/v1/terminals', tags=['terminals'])
 app.include_router(automations.router, prefix='/api/v1/automations', tags=['automations'])
 app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars'])
+app.include_router(novel_expert.router, prefix='/api/v1/novel-expert', tags=['novel-expert'])
 app.include_router(tokenfun_usage.router, prefix='/api/usage/tokenfun', tags=['tokenfun-usage'])
 app.include_router(tokenfun_usage.admin_router, prefix='/api/admin/usage/tokenfun', tags=['tokenfun-usage-admin'])
 

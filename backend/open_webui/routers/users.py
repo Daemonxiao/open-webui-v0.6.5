@@ -237,6 +237,9 @@ class FeaturesPermissions(BaseModel):
     memories: bool = True
     automations: bool = False
     calendar: bool = True
+    novel_expert: bool = False
+    novel_expert_manage: bool = False
+    novel_expert_super_admin: bool = False
 
 
 class SettingsPermissions(BaseModel):

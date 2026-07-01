@@ -1238,6 +1238,14 @@ except Exception:
 
 WEBUI_URL = PersistentConfig('WEBUI_URL', 'webui.url', os.environ.get('WEBUI_URL', ''))
 
+NOVEL_EXPERT_BASE_URL = PersistentConfig(
+    'NOVEL_EXPERT_BASE_URL',
+    'novel_expert.base_url',
+    os.environ.get('NOVEL_EXPERT_BASE_URL', ''),
+)
+NOVEL_EXPERT_SSO_SECRET = os.environ.get('NOVEL_EXPERT_SSO_SECRET', '')
+NOVEL_EXPERT_SSO_TOKEN_TTL_SECONDS = int(os.environ.get('NOVEL_EXPERT_SSO_TOKEN_TTL_SECONDS', '60'))
+
 
 ENABLE_SIGNUP = PersistentConfig(
     'ENABLE_SIGNUP',
@@ -1563,6 +1571,18 @@ USER_PERMISSIONS_FEATURES_AUTOMATIONS = (
 
 USER_PERMISSIONS_FEATURES_CALENDAR = os.environ.get('USER_PERMISSIONS_FEATURES_CALENDAR', 'True').lower() == 'true'
 
+USER_PERMISSIONS_FEATURES_NOVEL_EXPERT = (
+    os.environ.get('USER_PERMISSIONS_FEATURES_NOVEL_EXPERT', 'False').lower() == 'true'
+)
+
+USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_MANAGE = (
+    os.environ.get('USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_MANAGE', 'False').lower() == 'true'
+)
+
+USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_SUPER_ADMIN = (
+    os.environ.get('USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_SUPER_ADMIN', 'False').lower() == 'true'
+)
+
 
 USER_PERMISSIONS_SETTINGS_INTERFACE = os.environ.get('USER_PERMISSIONS_SETTINGS_INTERFACE', 'True').lower() == 'true'
 
@@ -1636,6 +1656,9 @@ DEFAULT_USER_PERMISSIONS = {
         'memories': USER_PERMISSIONS_FEATURES_MEMORIES,
         'automations': USER_PERMISSIONS_FEATURES_AUTOMATIONS,
         'calendar': USER_PERMISSIONS_FEATURES_CALENDAR,
+        'novel_expert': USER_PERMISSIONS_FEATURES_NOVEL_EXPERT,
+        'novel_expert_manage': USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_MANAGE,
+        'novel_expert_super_admin': USER_PERMISSIONS_FEATURES_NOVEL_EXPERT_SUPER_ADMIN,
     },
     'settings': {
         'interface': USER_PERMISSIONS_SETTINGS_INTERFACE,
