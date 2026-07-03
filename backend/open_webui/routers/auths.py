@@ -46,6 +46,7 @@ from open_webui.env import (
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response, JSONResponse
 from open_webui.config import (
+    NOVEL_EXPERT_BASE_URL,
     OPENID_PROVIDER_URL,
     OPENID_END_SESSION_ENDPOINT,
     ENABLE_OAUTH_SIGNUP,
@@ -53,6 +54,7 @@ from open_webui.config import (
     ENABLE_PASSWORD_AUTH,
     OAUTH_PROVIDERS,
     OAUTH_MERGE_ACCOUNTS_BY_EMAIL,
+    WEBUI_URL,
 )
 from open_webui.utils.oauth import auth_manager_config
 from pydantic import BaseModel
@@ -91,6 +93,46 @@ from ldap3.utils.conv import escape_filter_chars
 router = APIRouter()
 
 log = logging.getLogger(__name__)
+
+
+def _webui_base_url(request: Request) -> str:
+    configured_url = str(WEBUI_URL.env_value or WEBUI_URL.value or '').rstrip('/')
+    if configured_url:
+        return configured_url
+    return f'{request.url.scheme}://{request.url.netloc}'
+
+
+def _absolute_webui_redirect_url(request: Request, redirect_url: str | None = None) -> str:
+    if not redirect_url:
+        return f'{_webui_base_url(request)}/auth'
+
+    parsed = urllib.parse.urlparse(redirect_url)
+    if parsed.scheme and parsed.netloc:
+        return redirect_url
+    if redirect_url.startswith('/'):
+        return f'{_webui_base_url(request)}{redirect_url}'
+    return f'{_webui_base_url(request)}/{redirect_url}'
+
+
+def _is_webui_redirect_url(request: Request, redirect_url: str | None) -> bool:
+    if not redirect_url:
+        return True
+
+    parsed = urllib.parse.urlparse(redirect_url)
+    if not parsed.scheme and not parsed.netloc:
+        return redirect_url.startswith('/') and not redirect_url.startswith('//')
+
+    webui_base = urllib.parse.urlparse(_webui_base_url(request))
+    return parsed.scheme == webui_base.scheme and parsed.netloc == webui_base.netloc
+
+
+def _storyos_logout_redirect_url(request: Request, next_url: str | None = None) -> str | None:
+    base_url = str(NOVEL_EXPERT_BASE_URL.env_value or NOVEL_EXPERT_BASE_URL.value or '').rstrip('/')
+    if not base_url or not _is_webui_redirect_url(request, next_url):
+        return None
+
+    query = urllib.parse.urlencode({'next': _absolute_webui_redirect_url(request, next_url)})
+    return f'{base_url}/auth/openwebui/logout?{query}'
 
 # Forgive us our failed attempts, as we forgive those
 # who exceed their allotted rate against this gate.
@@ -860,6 +902,17 @@ async def signout(request: Request, response: Response, db: AsyncSession = Depen
                     detail='Failed to sign out from the OpenID provider.',
                     headers=response.headers,
                 )
+
+    storyos_logout_url = _storyos_logout_redirect_url(request, WEBUI_AUTH_SIGNOUT_REDIRECT_URL)
+    if storyos_logout_url:
+        return JSONResponse(
+            status_code=200,
+            content={
+                'status': True,
+                'redirect_url': storyos_logout_url,
+            },
+            headers=response.headers,
+        )
 
     if WEBUI_AUTH_SIGNOUT_REDIRECT_URL:
         return JSONResponse(
