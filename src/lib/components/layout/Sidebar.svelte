@@ -160,8 +160,16 @@
 		}
 	};
 
-	const getMenuItemMeta = (id) => {
-		const items = {
+	type MenuItemMeta = {
+		label: string;
+		href: string;
+		iconType: string;
+		target?: '_blank';
+		rel?: string;
+	};
+
+	const getMenuItemMeta = (id: string): MenuItemMeta | undefined => {
+		const items: Record<string, MenuItemMeta> = {
 			notes: { label: 'Notes', href: '/notes', iconType: 'note' },
 			workspace: { label: 'Workspace', href: '/workspace', iconType: 'workspace' },
 			automations: { label: 'Automations', href: '/automations', iconType: 'automations' },
@@ -169,11 +177,24 @@
 			storyos: {
 				label: 'StoryOS 创作台',
 				href: `${WEBUI_API_BASE_URL}/novel-expert/launch?next=/generate`,
-				iconType: 'storyos'
+				iconType: 'storyos',
+				target: '_blank',
+				rel: 'noopener noreferrer'
 			},
 			playground: { label: 'Playground', href: '/playground', iconType: 'playground' }
 		};
 		return items[id];
+	};
+
+	const openMenuItem = async (meta: MenuItemMeta) => {
+		if (meta.target === '_blank') {
+			window.open(meta.href, '_blank', 'noopener,noreferrer');
+			await itemClickHandler();
+			return;
+		}
+
+		goto(meta.href);
+		await itemClickHandler();
 	};
 
 	const initPinnedMenuSortable = () => {
@@ -890,11 +911,12 @@
 								<a
 									class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
 									href={meta.href}
+									target={meta.target}
+									rel={meta.rel}
 									on:click={async (e) => {
 										e.stopImmediatePropagation();
 										e.preventDefault();
-										goto(meta.href);
-										itemClickHandler();
+										await openMenuItem(meta);
 									}}
 									draggable="false"
 									aria-label={$i18n.t(meta.label)}
@@ -1137,6 +1159,8 @@
 										id="sidebar-{itemId}-button"
 										class="grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
 										href={meta.href}
+										target={meta.target}
+										rel={meta.rel}
 										on:click={itemClickHandler}
 										draggable="false"
 										aria-label={$i18n.t(meta.label)}
