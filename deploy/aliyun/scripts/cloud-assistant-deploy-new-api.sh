@@ -207,6 +207,7 @@ main() {
     printf 'USAGE_RECONCILE_SCOPE=tenant\n'
     printf 'USAGE_RECONCILE_LOCAL_USERNAME_FILTER=%s\n' "$PROD_USAGE_RECONCILE_LOCAL_USERNAME_FILTER"
     printf 'USAGE_RECONCILE_USERNAME_MAP=%s\n' "$PROD_USAGE_RECONCILE_USERNAME_MAP"
+    printf 'LOG_RECONCILE_WORKER_URL=http://usage-reconcile-worker-hai:3080\n'
     printf 'MEMORY_CACHE_ENABLED=true\n'
     printf 'BATCH_UPDATE_ENABLED=true\n'
   } > "$env_new_api"
