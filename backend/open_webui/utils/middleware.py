@@ -3089,6 +3089,19 @@ def build_response_object(response, response_data):
     return response
 
 
+def _has_clean_chat_completion_finish(choices: Any) -> bool:
+    return (
+        isinstance(choices, list)
+        and bool(choices)
+        and isinstance(choices[0], dict)
+        and choices[0].get('finish_reason') == 'stop'
+    )
+
+
+def _should_ignore_late_stream_error(error: Any, has_clean_finish: bool) -> bool:
+    return bool(error) and has_clean_finish
+
+
 async def get_system_oauth_token(request, user):
     """Get the system OAuth token for a user.
 
@@ -3959,6 +3972,7 @@ async def streaming_chat_response_handler(response, ctx):
                     nonlocal last_response_id
 
                     response_tool_calls = []
+                    has_clean_finish = False
 
                     delta_count = 0
                     delta_chunk_size = max(
@@ -4100,6 +4114,10 @@ async def streaming_chat_response_handler(response, ctx):
                                     continue
                                 else:
                                     choices = data.get('choices', [])
+                                    has_clean_finish = (
+                                        has_clean_finish
+                                        or _has_clean_chat_completion_finish(choices)
+                                    )
 
                                     # Normalize usage data to standard format
                                     raw_usage = data.get('usage', {}) or {}
@@ -4118,6 +4136,16 @@ async def streaming_chat_response_handler(response, ctx):
                                     if not choices:
                                         error = data.get('error', {})
                                         if error:
+                                            if _should_ignore_late_stream_error(
+                                                error, has_clean_finish
+                                            ):
+                                                log.warning(
+                                                    'Ignoring provider error received after '
+                                                    'finish_reason=stop: %s',
+                                                    error,
+                                                )
+                                                continue
+
                                             log.error('Provider returned error (streaming): %s', error)
                                             error_payload = (
                                                 {
