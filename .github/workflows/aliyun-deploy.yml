@@ -105,11 +105,12 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v5
+        env:
+          BUILDX_NO_DEFAULT_OCI_ARTIFACT: "true"
         with:
           context: .
           push: true
           platforms: linux/amd64
-          provenance: mode=max,oci-artifacts=false
           tags: |
             ${{ steps.image.outputs.image }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:latest
