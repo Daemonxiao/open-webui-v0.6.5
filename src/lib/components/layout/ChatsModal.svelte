@@ -570,7 +570,7 @@
 										atSelectedModel=""
 										bind:history={previewHistory}
 										autoScroll={false}
-										messagesCount={null}
+										messagesCount={8}
 										sendMessage={() => {}}
 										continueResponse={() => {}}
 										regenerateResponse={() => {}}
