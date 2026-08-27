@@ -40,6 +40,12 @@
 	let pendingUpdate = null;
 	let lastContent = '';
 	let lastParsedContent = '';
+	let renderAsPlainText = false;
+
+	// Parsing unusually large saved messages into a full Markdown component tree can
+	// block the UI when older history is mounted. Keep the complete content visible,
+	// but use a single text node for these outliers instead of rich Markdown rendering.
+	const MAX_RICH_MARKDOWN_CHARS = 50_000;
 
 	const options = {
 		throwOnError: false,
@@ -63,6 +69,15 @@
 	const parseTokens = () => {
 		if (content === lastContent) return;
 		lastContent = content;
+
+		if (content.length > MAX_RICH_MARKDOWN_CHARS) {
+			lastParsedContent = '';
+			tokens = [];
+			renderAsPlainText = true;
+			return;
+		}
+
+		renderAsPlainText = false;
 
 		const processed = replaceTokens(processResponseContent(content), model?.name, $user?.name);
 		if (processed === lastParsedContent) return;
@@ -95,21 +110,25 @@
 </script>
 
 {#key id}
-	<MarkdownTokens
-		{tokens}
-		{id}
-		{done}
-		{save}
-		{preview}
-		{paragraphTag}
-		{editCodeBlock}
-		{sourceIds}
-		{topPadding}
-		{allowEmbeds}
-		{onTaskClick}
-		{onSourceClick}
-		{onSave}
-		{onUpdate}
-		{onPreview}
-	/>
+	{#if renderAsPlainText}
+		<div class="whitespace-pre-wrap break-words" dir="auto">{content}</div>
+	{:else}
+		<MarkdownTokens
+			{tokens}
+			{id}
+			{done}
+			{save}
+			{preview}
+			{paragraphTag}
+			{editCodeBlock}
+			{sourceIds}
+			{topPadding}
+			{allowEmbeds}
+			{onTaskClick}
+			{onSourceClick}
+			{onSave}
+			{onUpdate}
+			{onPreview}
+		/>
+	{/if}
 {/key}
