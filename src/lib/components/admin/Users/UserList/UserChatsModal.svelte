@@ -115,6 +115,7 @@
 	})}
 	emptyPlaceholder={$i18n.t('No chats found for this user.')}
 	shareUrl={true}
+	renderOversizedMarkdownAsPlainText={true}
 	{chatList}
 	{allChatsLoaded}
 	{chatListLoading}

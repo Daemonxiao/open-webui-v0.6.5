@@ -39,6 +39,7 @@
 	export let showUserInfo = false;
 	export let showSearch = true;
 	export let readOnly = false;
+	export let renderOversizedMarkdownAsPlainText = false;
 
 	export let query = '';
 
@@ -571,6 +572,7 @@
 										bind:history={previewHistory}
 										autoScroll={false}
 										messagesCount={8}
+										{renderOversizedMarkdownAsPlainText}
 										sendMessage={() => {}}
 										continueResponse={() => {}}
 										regenerateResponse={() => {}}

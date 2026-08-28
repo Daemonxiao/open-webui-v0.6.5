@@ -1,5 +1,5 @@
 <script>
-	import { onDestroy } from 'svelte';
+	import { getContext, onDestroy } from 'svelte';
 	import { marked } from 'marked';
 	import { replaceTokens, processResponseContent } from '$lib/utils';
 	import { user } from '$lib/stores';
@@ -41,6 +41,8 @@
 	let lastContent = '';
 	let lastParsedContent = '';
 	let renderAsPlainText = false;
+	const renderOversizedMarkdownAsPlainText =
+		getContext('renderOversizedMarkdownAsPlainText') === true;
 
 	// Parsing unusually large saved messages into a full Markdown component tree can
 	// block the UI when older history is mounted. Keep the complete content visible,
@@ -70,7 +72,7 @@
 		if (content === lastContent) return;
 		lastContent = content;
 
-		if (content.length > MAX_RICH_MARKDOWN_CHARS) {
+		if (renderOversizedMarkdownAsPlainText && content.length > MAX_RICH_MARKDOWN_CHARS) {
 			lastParsedContent = '';
 			tokens = [];
 			renderAsPlainText = true;

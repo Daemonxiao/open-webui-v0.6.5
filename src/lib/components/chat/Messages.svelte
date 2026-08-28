@@ -9,7 +9,7 @@
 		currentChatPage,
 		temporaryChatEnabled
 	} from '$lib/stores';
-	import { tick, getContext, onMount, onDestroy, createEventDispatcher } from 'svelte';
+	import { tick, getContext, setContext, onMount, onDestroy, createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
 
 	import { toast } from 'svelte-sonner';
@@ -58,6 +58,9 @@
 	export let onSelect = (e) => {};
 
 	export let messagesCount: number | null = 8;
+	export let renderOversizedMarkdownAsPlainText = false;
+	setContext('renderOversizedMarkdownAsPlainText', renderOversizedMarkdownAsPlainText);
+
 	let messagesLoading = false;
 
 	onDestroy(() => {
